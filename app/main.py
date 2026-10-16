@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import Body, FastAPI
 
 from app.parser import parse_address
+from app.auth import router as auth_router
 
 from pathlib import Path
 from fastapi.responses import FileResponse
@@ -12,6 +13,7 @@ from fastapi.responses import FileResponse
 
 log = logging.getLogger("jana")
 app = FastAPI(title="Jana Address")
+app.include_router(auth_router)
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(Path(__file__).parent / "static" / "index.html")

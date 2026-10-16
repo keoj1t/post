@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from app import osm
-from app.geo import resolve_geo, ROWS, depth_of, LOC, norm as geo_norm, strip_markers, pick_ru
+from app.geo import resolve_geo, ROWS, depth_of, LOC, PROV, DIST, top_of, prov_display, norm as geo_norm, strip_markers, pick_ru
 
 def clean(s: str) -> str:
     if not s:
@@ -21,13 +21,13 @@ KEYWORDS = (
     r"flat|kv|floor"
 )
 KW = {}
-for w in ("кв", "квартира", "flat", "kv", "апт", "ап"):
+for w in ("кв", "квартира", "кварт", "flat", "kv", "апт", "ап"):
     KW[w] = "apartment"
 for w in ("подъезд", "подьезд", "подъ", "под", "п"):
     KW[w] = "entrance"
 for w in ("этаж", "эт", "floor"):
     KW[w] = "floor"
-for w in ("дом", "д", "уй"):
+for w in ("дом", "д", "дм", "уй"):
     KW[w] = "house"
 
 NUM_RE = re.compile(r"^\d+[а-яa-z]?(?:/\d+[а-яa-z]?)?$", re.I)
@@ -36,11 +36,12 @@ NUM_RE = re.compile(r"^\d+[а-яa-z]?(?:/\d+[а-яa-z]?)?$", re.I)
 def extract_keyword_fields(s: str):
     """Находит квартиру/подъезд/этаж/дом. Возвращает (поля, оставшаяся строка)."""
     tokens = re.findall(r",|[^\s,]+", s)
-    norm = [t.strip(".").lower() for t in tokens]
+    norm = [canonical_marker(t) for t in tokens]
     n = len(tokens)
     is_num = [bool(NUM_RE.match(t)) for t in norm]
 
-    kws = [i for i, t in enumerate(norm) if t in KW]
+    kws = [i for i, t in enumerate(norm) if t in KW
+           and not (t == "под" and i + 1 < n and norm[i + 1] in LANDMARK_INFLECTIONS)]
 
     def free_nums(i, used):
         """Свободные числа слева и справа от слова i."""
@@ -91,8 +92,8 @@ def extract_keyword_fields(s: str):
     return fields, " ".join(rest)
 
 def split_glued(s: str) -> str:
-    s = re.sub(r"(\d)([а-яёa-z]{2,})", r"\1 \2", s, flags=re.I)
-    s = re.sub(r"([а-яёa-z]{2,})(\d)", r"\1 \2", s, flags=re.I)
+    s = re.sub(r"(\d)([^\W\d_]{2,})", r"\1 \2", s, flags=re.I)
+    s = re.sub(r"([^\W\d_]{2,})(\d)", r"\1 \2", s, flags=re.I)
     return s
 
 
@@ -100,7 +101,7 @@ def split_glued(s: str) -> str:
 APT_WORDS = r"(?:кв|квартира|flat|kv|апт|ап)"
 ENT_WORDS = r"(?:подъезд|подьезд|под|п)"
 FLOOR_WORDS = r"(?:этаж|эт|floor)"
-HOUSE_WORDS = r"(?:дом|д)"
+HOUSE_WORDS = r"(?:дом|дм|д)"
 
 STREET_TYPES = {
     "улица": "улица", "ул": "улица",
@@ -121,8 +122,147 @@ GEO_MARKERS = {"город", "г", "область", "обл", "район", "р
 NUMBER_BEFORE_TYPE = {"микрорайон", "квартал"}  
 
 
+# Исправляем только известные маркеры с одной пропущенной буквой.
+# Названия улиц и жилмассивов не нормализуем и не исправляем по сходству.
+_MISSING_LETTER_CANDIDATES = {}
+for _marker in ("переулок", "проспект", "микрорайон", "бульвар", "квартира", "подъезд"):
+    for _position in range(len(_marker)):
+        _variant = _marker[:_position] + _marker[_position + 1:]
+        _MISSING_LETTER_CANDIDATES.setdefault(_variant, set()).add(_marker)
+MARKER_ALIASES = {variant: next(iter(markers))
+                  for variant, markers in _MISSING_LETTER_CANDIDATES.items()
+                  if len(markers) == 1 and variant not in STREET_TYPES and variant not in KW}
+MARKER_ALIASES.update({"подьедз": "подъезд", "подъедз": "подъезд", "подезд": "подъезд"})
+
+LANDMARK_INFLECTIONS = {"магазином", "магазина", "школой", "школы", "банком", "банка", "аптекой", "аптеки"}
+
+
+def extract_glued_fields(s):
+    """Связь в «эт4» сильнее соседства в «подъезд 5 эт 4»."""
+    words = set(KW) | {alias for alias, target in MARKER_ALIASES.items() if target in KW}
+    alternatives = "|".join(re.escape(word) for word in sorted(words, key=len, reverse=True))
+    number = r"\d+[а-яa-z]??(?:/\d+[а-яa-z]??)?"
+    patterns = [re.compile(rf"(?<!\w)(?P<marker>{alternatives})\.?(?P<number>{number})(?!\w)", re.I),
+                re.compile(rf"(?<!\w)(?P<number>{number})(?P<marker>{alternatives})(?!\w)", re.I)]
+    candidates = sorted((match for pattern in patterns for match in pattern.finditer(s)), key=lambda match: match.start())
+    fields, used = {}, []
+    for match in candidates:
+        field = KW[canonical_marker(match['marker'])]
+        if field in fields or any(match.start() < end and match.end() > start for start, end in used):
+            continue
+        fields[field] = match['number']
+        used.append(match.span())
+    for start, end in sorted(used, reverse=True):
+        s = s[:start] + ' ' + s[end:]
+    return fields, s
+
+
+def extract_landmark(s):
+    tokens = list(re.finditer(r",|[^\s,]+", s))
+    for i, token in enumerate(tokens):
+        if canonical_marker(token.group()) in LANDMARK_SET | LANDMARK_INFLECTIONS:
+            start = token.start()
+            if i and canonical_marker(tokens[i - 1].group()) in {"под", "над", "за", "перед", "у", "около"}:
+                start = tokens[i - 1].start()
+            return ' '.join(s[start:].replace(',', ' ').split()), s[:start]
+    return None, s
+
+
+def extract_inline_geo(s):
+    """Извлекает явные область/район и известный город без запятых."""
+    tokens = list(re.finditer(r",|[^\s,]+", s))
+    taken, out = set(), {}
+    def claim(start, end, key, value):
+        taken.update(range(start, end))
+        out[key] = value
+    def phrase(start, end):
+        return ' '.join(token.group() for token in tokens[start:end])
+    for i, token in enumerate(tokens):
+        marker = canonical_marker(token.group())
+        if i in taken or marker not in {"область", "обл", "облысы", "район", "р-н", "ауданы"}:
+            continue
+        province = marker in {"область", "обл", "облысы"}
+        catalog = PROV if province else DIST
+        match = None
+        for direction in (-1, 1):
+            for count in (3, 2, 1):
+                start, end = (i-count, i) if direction == -1 else (i+1, i+1+count)
+                if start < 0 or end > len(tokens) or any(j in taken or tokens[j].group() == ',' for j in range(start, end)):
+                    continue
+                value = phrase(start, end)
+                key = geo_norm(strip_markers(value))
+                if key in catalog:
+                    shown = prov_display(catalog[key][0]) if province else strip_markers(value)
+                    match = min(start, i), max(end, i+1), shown
+                    break
+            if match:
+                break
+        # Явный неизвестный район сохраняем, но не придумываем географию по нему.
+        if not match and not province:
+            for j in (i+1, i-1):
+                if 0 <= j < len(tokens) and j not in taken:
+                    value = tokens[j].group()
+                    if value != ',' and canonical_marker(value) not in GEO_MARKERS | set(STREET_TYPES) | set(KW) and not NUM_RE.match(value):
+                        match = min(i,j), max(i,j)+1, value
+                        break
+        if match:
+            claim(match[0], match[1], 'province' if province else 'district', match[2])
+    for i in range(len(tokens)):
+        if i in taken:
+            continue
+        for count in (2, 1):
+            end = i + count
+            if end > len(tokens) or any(j in taken or tokens[j].group() == ',' for j in range(i,end)):
+                continue
+            value = phrase(i,end)
+            if geo_norm(value) not in CITY_KEYS:
+                continue
+            before = canonical_marker(tokens[i-1].group()) if i else ''
+            after = canonical_marker(tokens[end].group()) if end < len(tokens) else ''
+            if before in STREET_TYPES or before in GEO_MARKERS or after in {'қаласы', 'город', 'г'}:
+                continue
+            claim(i,end,'city',value)
+            break
+    spans = [(tokens[i].start(), tokens[i].end()) for i in taken]
+    for start, end in sorted(spans, reverse=True):
+        s = s[:start] + ' ' + s[end:]
+    return out, s
+
+
+def has_geo_conflict(res):
+    cities = LOC.get(geo_norm(res.get('city') or ''), [])
+    cities = [i for i in cities if re.search(r"г\.а\.|^г\.|город|қаласы", ROWS[i][1], re.I)]
+    provinces = PROV.get(geo_norm(strip_markers(res.get('province') or '')), [])
+    return bool(cities and provinces and not ({top_of(i) for i in cities} & set(provinces)))
+
+
+def canonical_marker(token):
+    token = token.strip(".").lower()
+    return MARKER_ALIASES.get(token, token)
+
+
+def extract_living_area(s):
+    """Отделяет явный жилмассив до разбора дома, сохраняя его номер."""
+    marker = re.search(r"(?<!\w)(?:ж\s*[./]?\s*м\.?|жилмассив|жилой\s+массив|тұрғын\s+алап)(?!\w)\s*", s, re.I)
+    if not marker:
+        return None, s
+    tokens = list(re.finditer(r",|[^\s,]+", s[marker.end():]))
+    name_tokens = []
+    end = marker.end()
+    for token in tokens:
+        value = token.group()
+        key = canonical_marker(value)
+        if value == "," or key in STREET_TYPES or key in KW or key in GEO_MARKERS or key in LANDMARK_SET:
+            break
+        name_tokens.append(value)
+        end = marker.end() + token.end()
+    if not name_tokens:
+        return None, s
+    return " ".join(name_tokens), s[:marker.start()] + " " + s[end:]
+
+
 def nt(t):
-    return t.strip(".").lower()
+    return canonical_marker(t)
 
 
 def split_segments(tokens):
@@ -280,16 +420,28 @@ def parse_address(raw: str) -> dict:
         "confidence": 0.0,
     }
     s = clean(raw)
+    glued_fields, s = extract_glued_fields(s)
     s = split_glued(s)
+    living_area, s = extract_living_area(s)
     fields, s = extract_keyword_fields(s)
+    fields.update(glued_fields)
     for k, v in fields.items():
         res[k] = v
+
+    landmark, s = extract_landmark(s)
+    explicit_geo, s = extract_inline_geo(s)
 
     st = parse_street(s, res["house"])
     for k in ("street_type", "street_name", "house", "landmark", "living_area"):
         res[k] = st[k]
-    g = resolve_geo(st["_geo"])
+    if living_area:
+        res["living_area"] = living_area
+    if landmark:
+        res["landmark"] = landmark
+    geo_segments = st["_geo"] + ([explicit_geo['city']] if explicit_geo.get('city') else [])
+    g = resolve_geo(geo_segments)
     res["province"], res["city"], res["district"] = g["province"], g["city"], g["district"]
+    res.update(explicit_geo)
 
     # Справочник OSM: район и тип улицы, только если их нет в самой строке
     if res["city"] and res["street_name"]:
@@ -304,4 +456,6 @@ def parse_address(raw: str) -> dict:
     conf += 0.2 * bool(res["province"]) + 0.2 * bool(res["city"])
     conf += 0.25 * bool(res["street_name"]) + 0.25 * bool(res["house"])
     res["confidence"] = round(max(0.05, min(conf - (0.3 - 0.3 * g["geo_conf"]) * 0, 0.95)), 2)
+    if has_geo_conflict(res):
+        res["confidence"] = min(res["confidence"], 0.55)
     return res

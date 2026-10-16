@@ -14,3 +14,6 @@ __pycache__/
 *.pbf
 *.sqlite-wal
 *.sqlite-shm
+
+# Local accounts and sessions
+data/accounts.sqlite3*

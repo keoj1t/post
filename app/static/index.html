@@ -1,85 +1,70 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Разбор адресов</title>
-<style>
-:root{
-  --bg:#f3f5f7; --panel:#ffffff; --ink:#1b2530; --muted:#66727f; --line:#d9dfe5; --accent:#1f5d7a; --accent-ink:#fff;
-  --warn:#c4472d;
-  --c-province:#cfe3f5; --c-city:#cdeed9; --c-district:#f6e6b4; --c-living_area:#e7d6f3; --c-street_type:#f9d5d0;
-  --c-street_name:#ffd9a8; --c-house:#bfe9e6; --c-apartment:#dfe3a8; --c-entrance:#f3c9e0; --c-floor:#d4dbe8; --c-landmark:#e3d3c4;
-}
-@media (prefers-color-scheme: dark){
-  :root{
-    --bg:#12171c; --panel:#1b222a; --ink:#e6ebf0; --muted:#93a0ad; --line:#2d3742; --accent:#5fb0d3; --accent-ink:#0d1a22; --warn:#ff8a70;
-    --c-province:#27465f; --c-city:#21503a; --c-district:#5b4c1c; --c-living_area:#4a3560; --c-street_type:#613531;
-    --c-street_name:#68451c; --c-house:#1f524f; --c-apartment:#4d5220; --c-entrance:#612d49; --c-floor:#37415a; --c-landmark:#4f3f31;
-  }
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{padding:20px 24px 8px}
-h1{margin:0 0 4px;font-size:22px;font-weight:650}
-header p{margin:0;color:var(--muted)}
-main{padding:12px 24px 40px;display:grid;gap:16px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
-textarea{width:100%;min-height:110px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--bg);color:var(--ink);font:inherit}
-.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
-button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 14px;border-radius:6px;cursor:pointer}
-button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
-button:disabled{opacity:.5;cursor:default}
-button:focus-visible,textarea:focus-visible,td:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.spacer{flex:1}
-#status{color:var(--muted)}
-#status.err{color:var(--warn)}
-.legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-.chip{padding:2px 8px;border-radius:4px;font-size:13px}
-.wrap{overflow:auto;border:1px solid var(--line);border-radius:6px;max-height:70vh}
-table{border-collapse:collapse;width:100%;min-width:1500px;background:var(--panel)}
-th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;font-size:14px}
-th{position:sticky;top:0;background:var(--bg);font-weight:600;z-index:1;white-space:nowrap}
-td.f{min-width:90px;cursor:text;background-clip:padding-box}
-td.f:empty::before{content:"—";color:var(--muted)}
-td.raw{min-width:300px;max-width:380px;line-height:1.8}
-td.num{color:var(--muted);text-align:right}
-tr.low td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
-mark{color:inherit;border-radius:3px;padding:1px 3px}
-.conf{font-variant-numeric:tabular-nums;white-space:nowrap}
-.conf.low{color:var(--warn);font-weight:600}
-.empty{color:var(--muted);padding:24px;text-align:center}
-</style>
-</head>
-<body>
-<header>
-  <h1>Разбор адресов</h1>
-  <p>Вставьте адреса (по одному в строке) или JSON, нажмите «Разобрать». Ячейки результата можно править.</p>
-</header>
-<main>
-  <section class="panel">
-    <textarea id="input" placeholder="Алматы Тимирязева 42 кв 10 2 этаж&#10;Актобе Абая 5" aria-label="Адреса"></textarea>
-    <div class="bar">
-      <button class="primary" id="run">Разобрать</button>
-      <label class="btn">Загрузить JSON<input id="file" type="file" accept=".json,.txt" hidden></label>
-      <span id="status" role="status"></span>
-      <span class="spacer"></span>
-      <button id="dlJson" disabled>Скачать JSON</button>
-      <button id="dlCsv" disabled>Скачать CSV</button>
-    </div>
-  </section>
-  <section class="panel">
-    <div class="legend" id="legend"></div>
-    <div class="wrap">
-      <table>
-        <thead id="thead"></thead>
-        <tbody id="tbody"><tr><td class="empty">Пока нет результатов</td></tr></tbody>
-      </table>
-    </div>
-  </section>
-</main>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Jana Address</title><style>:root{--bg:#fff;--panel:#fff;--ink:#202223;--muted:#7a7e83;--line:#eceeef;--green:#198d27;--soft:#f7f8f8;--c-province:#e3edfa;--c-city:#e0f0e3;--c-district:#faf0d5;--c-living_area:#eee6f6;--c-street_type:#fbe5e2;--c-street_name:#fcebd7;--c-house:#ddf1ed;--c-apartment:#edf1d7;--c-entrance:#f6e4ef;--c-floor:#e7ebf4;--c-landmark:#eee6df;color-scheme:light}
+:root[data-theme=dark]{--bg:#171819;--panel:#1e2021;--ink:#f3f4f4;--muted:#a5a9ac;--line:#323536;--green:#70d27e;--soft:#262829;--c-province:#27465f;--c-city:#21503a;--c-district:#5b4c1c;--c-living_area:#4a3560;--c-street_type:#613531;--c-street_name:#68451c;--c-house:#1f524f;--c-apartment:#4d5220;--c-entrance:#612d49;--c-floor:#37415a;--c-landmark:#4f3f31;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased}button,input,textarea,select{font:inherit}button,.btn,select,input[type=search]{border:1px solid var(--line);border-radius:9px;padding:9px 14px;background:var(--panel);color:var(--ink)}button,.btn{cursor:pointer;transition:background .16s}button:hover,.btn:hover{background:var(--soft)}button:disabled{opacity:.4;cursor:default}button.primary{background:var(--green);border-color:var(--green);color:white;padding:11px 22px;font-weight:600}button.primary:hover{filter:brightness(.95)}:root[data-theme=dark] button.primary{color:#111c12}.quiet{border-color:transparent;background:transparent}.compact{padding:8px 17px!important}.icon-button{border:0;font-size:22px;width:38px;height:38px;padding:0}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[contenteditable]:focus-visible,a:focus-visible,.btn:focus-visible{outline:2px solid var(--green);outline-offset:3px}a{color:inherit;text-decoration:none}header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);z-index:5}.top{max-width:1320px;margin:auto;display:flex;align-items:center;gap:13px;padding:22px 36px}.brand{display:flex;align-items:center;gap:8px;font-size:26px;font-weight:750;letter-spacing:-1.4px;color:var(--green)}.brand svg{width:28px;height:33px}.brand-dot{color:var(--ink)}.product{border-left:1px solid var(--line);margin-left:10px;padding-left:22px;color:var(--muted);font-size:15px}.spacer{flex:1}#language{border:0;background:transparent;padding:5px;font-size:12px;font-weight:600}#account{display:flex;align-items:center;gap:6px}nav{max-width:1320px;margin:auto;display:flex;gap:24px;padding:0 36px;overflow:auto}nav button{white-space:nowrap;padding:12px 2px 16px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted)}nav button[aria-selected=true]{border-color:var(--green);color:var(--ink);font-weight:600}.count{display:inline-flex;align-items:center;justify-content:center;background:var(--soft);border-radius:6px;min-width:20px;padding:0 4px;font-size:10px;margin-left:4px}main{max-width:1320px;margin:auto;padding:0 36px 25px;min-width:0}.hero{padding:60px 0 54px;display:flex;align-items:center;justify-content:space-between;gap:36px}.eyebrow{font-size:12px;color:var(--green);font-weight:600}.hero h1{font-size:clamp(34px,4.5vw,58px);font-weight:650;line-height:1.12;letter-spacing:-2.7px;margin:16px 0}.hero h1 span{color:var(--muted);font-weight:500}.hero p{font-size:15px;line-height:1.8;color:var(--muted);margin:18px 0 0}.hero-card{width:265px;flex-shrink:0;border:1px solid var(--line);border-radius:18px;padding:24px;transform:rotate(5deg);margin-right:48px;box-shadow:0 14px 40px #00000005;background:var(--panel)}.pin{width:44px;height:44px;background:var(--soft);border-radius:12px;padding:7px;color:var(--green)}.pin svg{width:30px;height:30px}.sample-city{font-size:23px;letter-spacing:-.5px;font-weight:600;margin-top:20px}.sample-address{font-size:12px;color:var(--muted);margin-top:3px}.sample-check{border-top:1px solid var(--line);padding-top:14px;margin-top:20px;font-size:11px}.sample-check>span:first-child{color:var(--green);margin-right:6px}.panel{padding:25px;border:1px solid var(--line);border-radius:14px;background:var(--panel);margin-bottom:24px;min-width:0}.sectionhead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}h2{font-size:19px;letter-spacing:-.4px;margin:0;font-weight:600}.muted{color:var(--muted)}.small{font-size:12px}.sectionhead p{margin:5px 0 0}textarea{display:block;width:100%;min-height:130px;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:17px;background:var(--soft);color:var(--ink);font:inherit;line-height:1.8}textarea::placeholder{color:var(--muted)}.input-bottom,.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}.drop{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}.drop.over{outline:2px dashed var(--green);outline-offset:6px}.drop .btn{border:0;padding-left:0;font-size:13px}.statusbar{margin-top:12px;min-height:18px}#status{font-size:11px;color:var(--muted)}#status.err,#authError{color:#c23f35}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;margin-bottom:30px}.kpi{padding:19px 24px;border-right:1px solid var(--line)}.kpi:last-child{border:0}.kpi span{font-size:12px;color:var(--muted)}.kpi b{display:block;margin-top:3px;font-size:28px;font-weight:550;letter-spacing:-1px}.filters{font-size:12px}.filters input[type=search]{min-width:210px}.threshold{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}input[type=range]{width:80px;accent-color:var(--green)}input[type=checkbox]{accent-color:var(--green)}.legend{display:flex;gap:7px;flex-wrap:wrap;margin:19px 0 14px}.chip{font-size:10px;border:0;border-radius:5px;padding:3px 8px}.chip[aria-pressed=false]{opacity:.3}.wrap{overflow:auto;max-height:550px;border:1px solid var(--line);border-radius:9px}table{width:100%;min-width:1550px;border-collapse:collapse}th,td{border-bottom:1px solid var(--line);padding:11px 12px;font-size:12px;text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:1;background:var(--soft);font-weight:500;color:var(--muted);white-space:nowrap}td.raw{min-width:300px;line-height:2.1}td.f{min-width:90px}td.f:empty:before{content:'—';color:var(--muted)}td:first-child button{display:block;font-size:11px;padding:2px 8px;border:0;color:var(--muted)}.edited{box-shadow:inset 0 -2px var(--green)}mark{padding:2px;border-radius:3px;color:inherit}.badge{display:inline-block;padding:3px 9px;border-radius:7px;font-size:11px;white-space:nowrap}.good{color:#267139;background:#eaf6ed}.medium{color:#886b24;background:#faf4e5}.low{color:#a54539;background:#fbeeea}.empty{padding:45px 15px;text-align:center;color:var(--muted)}.export-bar{border-top:1px solid var(--line);padding-top:18px}.detail{display:grid;grid-template-columns:1.15fr 1fr;gap:35px;margin-top:25px}.bigraw{font-size:25px;line-height:2;overflow-wrap:anywhere}.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{padding:10px 12px;border:1px solid var(--line);border-radius:8px;min-width:0}.field label{display:block;font-size:11px;color:var(--muted)}.field div{overflow-wrap:anywhere}.field input{width:100%;min-width:0;border:0;background:transparent;color:var(--ink);padding:6px 0}.tag{display:inline-block;font-size:11px;color:var(--green);margin-top:9px}progress{width:100%;height:5px;accent-color:var(--green)}footer{display:flex;align-items:center;gap:20px;font-size:11px;color:var(--muted);padding:25px 0;border-top:1px solid var(--line);margin-top:36px}.footer-brand{font-size:18px;color:var(--green);font-weight:700;letter-spacing:-.8px}dialog{max-width:430px;width:calc(100% - 32px);padding:38px;border:1px solid var(--line);border-radius:20px;background:var(--panel);color:var(--ink);box-shadow:0 25px 90px #0002}dialog::backdrop{background:#10182055;backdrop-filter:blur(4px)}.close-auth{position:absolute;right:12px;top:10px;border:0;font-size:24px;background:transparent;color:var(--muted)}.auth-brand{font-size:25px;font-weight:750;color:var(--green);letter-spacing:-1px;margin-bottom:25px}dialog h2{font-size:27px;letter-spacing:-.8px}dialog p{font-size:13px}#authForm label{display:block;font-size:12px;font-weight:500;margin:16px 0 7px}#authForm input{display:block;width:100%;border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:9px;padding:12px}#authForm .primary{width:100%;margin-top:16px}.password-wrap{position:relative}.password-wrap input{padding-right:45px!important}.password-wrap button{position:absolute;right:4px;top:5px;border:0;background:transparent;color:var(--muted);padding:6px 10px}#authError{font-size:12px;min-height:20px}.auth-switch{font-size:12px;text-align:center;margin-top:15px}.auth-switch button{color:var(--green);padding:3px}.auth-loading{opacity:.6}#toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);padding:12px 20px;background:var(--ink);color:var(--bg);border-radius:12px;z-index:10;max-width:90%;font-size:13px}[hidden]{display:none!important}#run.busy:before{content:'';display:inline-block;width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;margin-right:8px;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:850px){.top{padding:18px 20px;gap:8px}.product{margin-left:2px;padding-left:12px}.hero-card{margin-right:12px;width:225px}.hero{gap:20px}main{padding:0 20px 20px}nav{padding:0 20px}.detail{grid-template-columns:1fr}.threshold{width:100%}.input-bottom>.spacer{display:none}.input-bottom>.drop{width:100%}.input-bottom>#clear{margin-left:auto}}@media(max-width:600px){.top{flex-wrap:wrap;padding:15px 16px}.brand{font-size:23px}.brand svg{width:24px}.product{display:none}#openRegister{padding:7px 9px!important;font-size:11px}#openLogin{padding:7px;font-size:12px}#language{font-size:11px}.icon-button{width:27px}.hero{padding:36px 0 30px}.hero-card{display:none}.hero h1{letter-spacing:-1.5px;font-size:40px}.hero p{font-size:13px}main{padding:0 16px 20px}nav{padding:0 16px;gap:24px}nav button{font-size:12px}.panel{padding:17px}.kpis{grid-template-columns:1fr 1fr}.kpi{padding:16px}.kpi:nth-child(2){border-right:0}.kpi:nth-child(-n+2){border-bottom:1px solid var(--line)}.kpi b{font-size:25px}.kpi span{font-size:10px}.filters input[type=search]{width:100%}.fields{grid-template-columns:1fr}footer{gap:12px;flex-wrap:wrap}footer .spacer{display:none}dialog{padding:30px 25px}#account{gap:0}#accountName{max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px}#logout{font-size:11px;padding:5px}}@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.bar select{max-width:100%}#recordSelect{flex:1;min-width:100px;width:0}.detail>*{min-width:0}
+/* Лёгкое разделение секций без потери белой основы. */
+:root{--bg:#fafbfc;--line:#e1e5e8;--soft:#f4f6f7}:root[data-theme=dark]{--bg:#171819;--line:#383d40;--soft:#272b2d}
+header{background:var(--panel)}body,header,.panel,.kpis,.hero-card,button,textarea,input,select,dialog,footer{transition:background-color .24s ease,color .24s ease,border-color .24s ease,box-shadow .24s ease}
+.hero{padding:43px 0 34px;margin-bottom:28px;border-bottom:1px solid var(--line)}.hero h1{font-size:clamp(34px,4.2vw,53px)}.hero .eyebrow{display:inline-block;background:var(--panel);border:1px solid var(--line);padding:4px 10px;border-radius:20px;font-size:11px}
+.hero-steps{display:flex;align-items:center;flex-wrap:wrap;gap:18px;margin-top:24px;counter-reset:steps}.hero-steps>span{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}.hero-steps>span:before{counter-increment:steps;content:counter(steps);display:grid;place-items:center;width:20px;height:20px;border:1px solid var(--line);background:var(--panel);border-radius:50%;color:var(--green);font-size:10px}
+.hero-card{box-shadow:0 12px 30px #17242e08;transition:transform .3s ease,box-shadow .3s ease,background-color .24s ease,border-color .24s ease;animation:card-intro .6s ease both}.hero-card:hover{transform:rotate(1deg) translateY(-3px);box-shadow:0 16px 36px #17242e10}.sample-check{border-color:var(--line)}
+.panel{box-shadow:0 3px 14px #14232f04}.panel>.sectionhead{padding-bottom:17px;border-bottom:1px solid var(--line)}.kpis{background:var(--panel);box-shadow:0 3px 14px #14232f03}.kpi b{transition:color .24s ease}.input-panel{border-top:2px solid var(--green)}.export-bar{background:var(--soft);padding:15px;border:1px solid var(--line);border-radius:9px}.filters{padding-bottom:17px;border-bottom:1px solid var(--line)}button,.btn{transition:background-color .18s ease,color .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}button:not(:disabled):hover,.btn:hover{transform:translateY(-1px)}button:not(:disabled):active,.btn:active{transform:translateY(0)}nav button:hover{transform:none!important}nav button{transition:color .2s ease,border-color .2s ease}section[role=tabpanel]:not([hidden]){animation:section-enter .28s ease both}dialog[open]{animation:dialog-enter .22s ease both}.chip{transition:opacity .18s ease,transform .18s ease}.fields .field{transition:border-color .2s ease,box-shadow .2s ease}.fields .field:focus-within{border-color:var(--green)}
+@keyframes section-enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}@keyframes card-intro{from{opacity:0;transform:rotate(8deg) translateY(8px)}to{opacity:1;transform:rotate(5deg) translateY(0)}}@keyframes dialog-enter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:600px){.hero{padding:30px 0 25px;margin-bottom:22px}.hero h1{font-size:37px}.hero-steps{gap:13px;margin-top:20px}.hero-steps>span{font-size:10px}.panel>.sectionhead{padding-bottom:13px}.export-bar{padding:11px}.hero .eyebrow{font-size:10px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+@media(max-width:600px){#accountName{font-size:0;max-width:28px;width:28px;height:28px;padding:0;border-radius:50%;background:var(--soft);color:var(--green)}#accountName:before{content:attr(data-initial);font-size:12px;font-weight:600}#account{gap:5px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
+.validation-summary,.record-checks{border:1px solid #ead7a9;background:#fffaf0;color:#806328;border-radius:9px;padding:12px 14px;font-size:12px;margin:16px 0}.record-checks ul{padding-left:18px;margin:6px 0 0}.record-checks li+li{margin-top:4px}:root[data-theme=dark] .validation-summary,:root[data-theme=dark] .record-checks{background:#302a1e;border-color:#625333;color:#ead5a0}.field small{display:block;font-size:10px;margin-top:5px}.errors-table{min-width:1120px}.errors-table td{min-width:160px;max-width:290px;line-height:1.7}.errors-table td:first-child{min-width:250px}.errors-table td:last-child{min-width:130px}.errors-table p{overflow-wrap:anywhere}.expected-fields{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:11px;margin:10px 0 0}.expected-fields dt{color:var(--muted)}.expected-fields dd{margin:0;overflow-wrap:anywhere}.errors-wrap{max-height:680px}
+</style></head><body>
+<header><div class="top"><a href="#" class="brand" aria-label="Jana Post"><svg viewBox="0 0 32 38" fill="none" aria-hidden="true"><path d="M4 5h24v19L16 33 4 24Z" stroke="currentColor" stroke-width="2.5"/><path d="m9 17 5 5 10-12" stroke="currentColor" stroke-width="2.5"/></svg><span>jana post<span class="brand-dot">.</span></span></a><span class="product">Address</span><span class="spacer"></span><select id="language" aria-label="Язык / Тіл"><option value="ru">RU</option><option value="kk">ҚАЗ</option></select><button id="theme" class="icon-button" data-i18n-aria="Переключить тему" aria-label="Переключить тему">◐</button><button id="openLogin" class="quiet" data-i18n>Войти</button><button id="openRegister" class="primary compact" data-i18n>Регистрация</button><div id="account" hidden><button id="accountName" class="quiet"></button><button id="logout" data-i18n>Выйти</button></div></div><nav role="tablist" aria-label="Разделы"><button role="tab" data-tab="parse" aria-selected="true" data-i18n>Адреса</button><button role="tab" data-tab="tokens" aria-selected="false" data-i18n>Детали адреса</button><button role="tab" data-tab="queue" aria-selected="false"><span data-i18n>На проверку</span> <span id="qcount" class="count">0</span></button><button role="tab" data-tab="errors" aria-selected="false" data-i18n>Ошибки и исправления</button></nav></header>
+<main><div class="hero"><div><span class="eyebrow" data-i18n>Порядок начинается с адреса</span><h1 id="title">Каждый адрес.<br><span>На своём месте.</span></h1><p id="subtitle" data-i18n>Добавьте адреса — мы разложим всё по полочкам.<br>Вам останется проверить и сохранить.</p><div class="hero-steps" aria-label=""><span data-i18n>Добавьте</span><span data-i18n>Проверьте</span><span data-i18n>Сохраните</span></div></div><div class="hero-card" aria-hidden="true"><div class="pin"><svg viewBox="0 0 32 32" fill="none"><path d="M25 13c0 7-9 15-9 15S7 20 7 13a9 9 0 1 1 18 0Z" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="13" r="3" stroke="currentColor" stroke-width="1.8"/></svg></div><div class="sample-city">Алматы</div><div class="sample-address" data-i18n>Улица · Дом · Квартира</div><div class="sample-check"><span>✓</span> <span data-i18n>Всё на своих местах</span></div></div></div>
+<section id="parse" role="tabpanel"><div class="panel input-panel"><div class="sectionhead"><h2 data-i18n>Ваши адреса</h2><span class="spacer"></span><button id="example" class="quiet" data-i18n>Попробовать пример</button></div><textarea id="input" data-i18n-placeholder="Каждый адрес с новой строки. Например: Алматы, Абая 25, кв 12" placeholder="Каждый адрес с новой строки. Например: Алматы, Абая 25, кв 12" data-i18n-aria="Адреса" aria-label="Адреса"></textarea><div class="input-bottom"><div id="drop" class="drop"><label class="btn" for="file" tabindex="0" data-i18n>↑ Загрузить файл</label><input type="file" id="file" accept=".json,.txt" hidden><span class="muted" data-i18n>или перетащите сюда</span></div><span class="spacer"></span><button id="clear" class="quiet" data-i18n>Очистить</button><button class="primary" id="run" data-i18n>Обработать адреса →</button></div><div class="bar statusbar"><div id="status" role="status" aria-live="polite" data-i18n>Добавьте адреса, чтобы начать.</div><button id="retry" hidden data-i18n>Повторить</button></div></div>
+<div class="kpis"><div class="kpi"><span data-i18n>Всего адресов</span><b id="total">0</b></div><div class="kpi"><span data-i18n>Уверенность распознавания</span><b id="average">—</b></div><div class="kpi"><span data-i18n>Нужна проверка</span><b id="uncertain">0</b></div><div class="kpi"><span data-i18n>Заполнено</span><b id="filled">—</b></div></div>
+<div class="panel"><div class="sectionhead"><div><h2 data-i18n>Результаты</h2><p class="muted small" data-i18n>Нажмите на поле, чтобы внести изменения.</p></div><span class="spacer"></span><button id="undo" class="quiet" data-i18n>Отменить изменения</button></div><div class="bar filters"><input id="search" type="search" data-i18n-placeholder="Найти адрес" placeholder="Найти адрес" data-i18n-aria="Поиск адресов" aria-label="Поиск адресов"><select id="sort" data-i18n-aria="Сортировка" aria-label="Сортировка"><option value="original" data-i18n>По порядку</option><option value="asc" data-i18n>Сначала неточные</option><option value="desc" data-i18n>Сначала точные</option></select><label><input type="checkbox" id="onlylow"> <span data-i18n>Требуют проверки</span></label><span class="spacer"></span><label class="threshold"><span data-i18n>Порог проверки</span> <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.6"> <output id="thresholdValue">0.60</output></label></div><div class="coverage" id="coverage" hidden></div><div id="validationSummary" class="validation-summary" role="status" hidden></div><div class="legend" id="legend"></div><div class="wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div><div class="bar"><button id="prev" data-i18n>← Назад</button><span id="page" class="muted small"></span><button id="next" data-i18n>Далее →</button><span class="spacer"></span></div><div class="bar export-bar"><button id="dlJson" disabled data-i18n>Скачать JSON</button><button id="dlCsv" disabled data-i18n>Скачать CSV</button><button id="copy" class="quiet" disabled data-i18n>Копировать</button><label class="muted small"><input id="exportReviewed" type="checkbox"> <span data-i18n>С отметкой о проверке</span></label></div></div></section>
+<section id="tokens" role="tabpanel" hidden><div class="panel"><div class="sectionhead"><div><h2 data-i18n>Подсветка токенов</h2><p class="muted small" data-i18n>Один цвет — одно поле. Нажмите на значение справа, чтобы исправить его.</p></div><span class="spacer"></span><button id="tokenDemo" data-i18n>Показать пример</button><button id="tokenUndo" class="quiet" data-i18n>Отменить изменения адреса</button></div><div class="bar"><button id="tokenPrev" data-i18n>← Предыдущий</button><select id="recordSelect" data-i18n-aria="Выбрать адрес" aria-label="Выбрать адрес"></select><button id="tokenNext" data-i18n>Следующий →</button></div><div class="legend" id="tokenLegend"></div><div id="tokenDetail"></div></div></section>
+<section id="queue" role="tabpanel" hidden><div class="panel"><div class="sectionhead"><h2 data-i18n>Неуверенные сначала</h2><span class="spacer"></span><label><input id="queueAll" type="checkbox"> <span data-i18n>Показать все</span></label></div><p class="muted" data-i18n>Проверьте выделенные адреса и при необходимости исправьте поля.</p><div id="progressText" class="small"></div><progress id="progress" value="0" max="1"></progress><div id="queueDetail"></div><div class="bar"><button id="queueBack" data-i18n>← Назад</button><button id="confirm" class="primary" data-i18n>Подтвердить</button><button id="fixConfirm" data-i18n>Сохранить и подтвердить</button><button id="skip" class="quiet" data-i18n>Пропустить →</button></div><div class="bar export-bar"><button id="queueJson" disabled data-i18n>Скачать JSON</button><button id="queueCsv" disabled data-i18n>Скачать CSV</button><label class="muted small"><input type="checkbox" id="queueReviewed"> <span data-i18n>С отметкой о проверке</span></label></div></div></section>
+<section id="errors" role="tabpanel" hidden><div class="panel"><div class="sectionhead"><div><h2 data-i18n>Ошибки и что мы с ними сделали</h2><p class="muted small" data-i18n>Реальные примеры, исправления и результаты проверок. Без выдуманных метрик.</p></div></div><div class="bar filters"><input id="errorSearch" type="search" data-i18n-placeholder="Найти пример" placeholder="Найти пример" data-i18n-aria="Поиск примеров" aria-label="Поиск примеров"><select id="errorCategory" data-i18n-aria="Категория" aria-label="Категория"></select></div><div class="wrap errors-wrap"><table class="errors-table"><thead><tr><th data-i18n>Пример</th><th data-i18n>Проблема</th><th data-i18n>Что исправили</th><th data-i18n>Результат проверки</th><th></th></tr></thead><tbody id="errorsBody"></tbody></table></div><p class="muted small" data-i18n>Кнопка проверки отправляет исходный пример на обработку. Результаты в таблице подтверждены автоматическими проверками.</p></div></section>
+<footer><a class="footer-brand" href="#">jana post.</a><span data-i18n>Ближе к вам. Точнее до двери.</span><span class="spacer"></span><span>© Jana Post 2026</span></footer></main>
+<dialog id="authDialog" aria-labelledby="authTitle"><button id="closeAuth" class="close-auth" data-i18n-aria="Закрыть" aria-label="Закрыть">×</button><div class="auth-brand">jana post.</div><h2 id="authTitle"></h2><p id="authSubtitle" class="muted"></p><form id="authForm"><div id="nameGroup"><label for="authName" data-i18n>Ваше имя</label><input id="authName" name="name" autocomplete="name" maxlength="80"></div><label for="authEmail" data-i18n>Электронная почта</label><input id="authEmail" name="email" type="email" autocomplete="email" required maxlength="254"><label for="authPassword" data-i18n>Пароль</label><div class="password-wrap"><input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required><button type="button" id="showPassword" data-i18n-aria="Показать пароль" aria-label="Показать пароль">◉</button></div><p id="passwordHint" class="muted small" data-i18n>Не менее 10 символов.</p><div id="authError" role="alert"></div><button class="primary" id="authSubmit" type="submit"></button></form><div class="auth-switch"><span id="authSwitchText"></span> <button id="authSwitch" class="quiet"></button></div></dialog>
+<div id="toast" role="status" hidden></div><script id="errors-data" type="application/json">[{"category": {"ru": "География без запятых", "kk": "Үтірсіз география"}, "example": "жм пуси улица гарова астана алматинская область район сарыаркинский 3дом кварт4 подьедз5 эт4 под магазином алена", "before": {"ru": "Город, область и район попадали в название улицы. Этаж определялся как 5 вместо 4, ориентир терялся.", "kk": "Қала, облыс пен аудан көше атауына қосылған. Қабат 4 орнына 5 болып анықталып, бағдар жоғалған."}, "fix": {"ru": "География выделяется отдельно. Слитные маркеры сохраняют связь с числом. Противоречие города и области снижает уверенность и требует проверки.", "kk": "География бөлек алынады. Бірге жазылған белгілер өз санымен байланысады. Қала мен облыс қайшылығы сенімділікті төмендетіп, тексеруді талап етеді."}, "expected": {"province": "Алматинская область", "city": "астана", "district": "сарыаркинский", "living_area": "пуси", "street_type": "улица", "street_name": "гарова", "house": "3", "apartment": "4", "entrance": "5", "floor": "4", "landmark": "под магазином алена", "confidence": 0.55}}, {"category": {"ru": "Жилмассив и опечатки", "kk": "Тұрғын алап және қате жазу"}, "example": "жм Коктал1 преулок xxx дм1", "before": {"ru": "Жм не выделялся в жилмассив, а преулок и дм не распознавались.", "kk": "Жм тұрғын алап ретінде бөлінбей, преулок және дм белгілері танылмаған."}, "fix": {"ru": "Добавлены варианты жилмассива, сокращение дм и исправление одной пропущенной буквы в служебных словах.", "kk": "Тұрғын алап нұсқалары, дм қысқартуы және қызметтік сөздердегі бір түсіп қалған әріпті түзету қосылды."}, "expected": {"living_area": "Коктал 1", "street_type": "переулок", "street_name": "xxx", "house": "1"}}, {"category": {"ru": "Квартира, подъезд и этаж", "kk": "Пәтер, кіреберіс және қабат"}, "example": "ул Абая 3дом кварт4 подьедз5 эт4", "before": {"ru": "Кварт и подьедз не распознавались; соседние числа могли попадать в другие поля.", "kk": "Кварт және подьедз танылмаған; көрші сандар басқа өрістерге түсуі мүмкін болған."}, "fix": {"ru": "Добавлены варианты маркеров. Связь в эт4 или 3дом определяется до разделения слов и чисел.", "kk": "Белгі нұсқалары қосылды. Эт4 не 3дом байланысы сөздер мен сандарды бөлмей тұрып анықталады."}, "expected": {"street_name": "Абая", "house": "3", "apartment": "4", "entrance": "5", "floor": "4"}}, {"category": {"ru": "Ориентир с предлогом", "kk": "Бағдардың толық атауы"}, "example": "Абая дом 3 этаж 4 под магазином алена", "before": {"ru": "Под мог восприниматься как подъезд, а магазином не считалось ориентиром.", "kk": "Под кіреберіс деп қабылданып, магазином бағдар ретінде танылмаған."}, "fix": {"ru": "Предлог сохраняется вместе с ориентиром. Под перед магазином не является маркером подъезда.", "kk": "Бағдар алдындағы сөз бірге сақталады. Под магазином тіркесіндегі под кіреберіс белгісі болып саналмайды."}, "expected": {"street_name": "Абая", "house": "3", "floor": "4", "entrance": null, "landmark": "под магазином алена"}}, {"category": {"ru": "Защита названий улиц", "kk": "Көше атауларын сақтау"}, "example": "улица Астана дом1", "before": {"ru": "При поиске города внутри строки есть риск принять название улицы за город.", "kk": "Жол ішінен қала іздегенде көше атауын қала деп қабылдау қаупі бар."}, "fix": {"ru": "Слово сразу после явного типа улицы остаётся её названием. Это защитная проверка нового правила.", "kk": "Көше түрінен кейінгі сөз көше атауы болып қалады. Бұл жаңа ереженің қорғаныс тексеруі."}, "expected": {"street_type": "улица", "street_name": "Астана", "house": "1", "city": null}}]</script><script>// Переводится только интерфейс. Введённые адреса и ответ сервера не переводятся.
+let language='ru';
+try { language=localStorage.getItem('jana-language')==='kk'?'kk':'ru'; } catch {}
+const KK={
+'Ошибки и исправления':'Қателер мен түзетулер','Ошибки и что мы с ними сделали':'Қателер және оларды түзету','Подсветка токенов':'Мекенжай бөліктерін белгілеу','Один цвет — одно поле. Нажмите на значение справа, чтобы исправить его.':'Бір түс — бір өріс. Түзету үшін оң жақтағы мәнді басыңыз.','Показать пример':'Мысалды көрсету','Отменить изменения адреса':'Мекенжай өзгерістерін қайтару','Неуверенные сначала':'Алдымен сенімсіз мекенжайлар','Реальные примеры, исправления и результаты проверок. Без выдуманных метрик.':'Нақты мысалдар, түзетулер мен тексеру нәтижелері. Ойдан шығарылған көрсеткіштерсіз.','Найти пример':'Мысал іздеу','Поиск примеров':'Мысалдарды іздеу','Категория':'Санат','Все категории':'Барлық санат','Пример':'Мысал','Проблема':'Мәселе','Что исправили':'Не түзетілді','Результат проверки':'Тексеру нәтижесі','Проверено тестом':'Тестпен тексерілді','Проверить пример':'Мысалды тексеру','Кнопка проверки отправляет исходный пример на обработку. Результаты в таблице подтверждены автоматическими проверками.':'Тексеру батырмасы бастапқы мысалды өңдеуге жібереді. Кестедегі нәтижелер автоматты тексерулермен расталған.','Примеры, которые помогли улучшить распознавание.':'Тануды жақсартуға көмектескен мысалдар.','Не найдено в исходной строке':'Бастапқы жолда табылмады','Обратите внимание':'Назар аударыңыз','Не указан дом.':'Үй көрсетілмеген.','Не указана улица или жилмассив.':'Көше немесе тұрғын алап көрсетілмеген.','Не указан город.':'Қала көрсетілмеген.','Город и область не согласованы. Проверьте географию.':'Қала мен облыс сәйкес келмейді. Географияны тексеріңіз.','Низкая уверенность: проверьте поля перед подтверждением.':'Сенімділік төмен: растау алдында өрістерді тексеріңіз.','Квартал':'Орам','Микрорайон':'Шағынаудан',
 
-<script>
+'Добавьте':'Қосыңыз','Проверьте':'Тексеріңіз','Сохраните':'Сақтаңыз',
+'Порядок начинается с адреса':'Бәрі дұрыс мекенжайдан басталады',
+'Добавьте адреса — мы разложим всё по полочкам.':'Мекенжайларды қосыңыз — бәрін ретке келтіреміз.',
+'Вам останется проверить и сохранить.':'Сізге тек тексеріп, сақтау қалады.',
+'Улица · Дом · Квартира':'Көше · Үй · Пәтер','Всё на своих местах':'Бәрі өз орнында',
+'Войти':'Кіру','Регистрация':'Тіркелу','Выйти':'Шығу','Адреса':'Мекенжайлар','Детали адреса':'Мекенжай мәліметтері','На проверку':'Тексеру қажет',
+'Ваши адреса':'Мекенжайларыңыз','Попробовать пример':'Мысалды көру','Каждый адрес с новой строки. Например: Алматы, Абая 25, кв 12':'Әр мекенжайды жаңа жолға жазыңыз. Мысалы: Алматы, Абай 25, 12-пәтер',
+'↑ Загрузить файл':'↑ Файл жүктеу','или перетащите сюда':'немесе осында сүйреп әкеліңіз','Очистить':'Тазалау','Обработать адреса →':'Мекенжайларды өңдеу →','Добавьте адреса, чтобы начать.':'Бастау үшін мекенжайларды қосыңыз.',
+'Всего адресов':'Барлық мекенжай','Уверенность распознавания':'Тану сенімділігі','Нужна проверка':'Тексеру қажет','Заполнено':'Толтырылды','Результаты':'Нәтижелер','Нажмите на поле, чтобы внести изменения.':'Өзгерту үшін өрісті басыңыз.',
+'Отменить изменения':'Өзгерістерден бас тарту','Найти адрес':'Мекенжай іздеу','Поиск адресов':'Мекенжайларды іздеу','По порядку':'Ретімен','Сначала неточные':'Алдымен тексерілетіндер','Сначала точные':'Алдымен сенімділер','Требуют проверки':'Тексеруді қажет етеді','Порог проверки':'Тексеру шегі',
+'← Назад':'← Артқа','Далее →':'Келесі →','Скачать JSON':'JSON жүктеу','Скачать CSV':'CSV жүктеу','Копировать':'Көшіру','С отметкой о проверке':'Тексеру белгісімен',
+'← Предыдущий':'← Алдыңғы','Следующий →':'Келесі →','Выбрать адрес':'Мекенжай таңдау','Проверим вместе':'Бірге тексерейік','Показать все':'Барлығын көрсету','Проверьте выделенные адреса и при необходимости исправьте поля.':'Белгіленген мекенжайларды тексеріп, қажет болса өрістерді түзетіңіз.',
+'Подтвердить':'Растау','Сохранить и подтвердить':'Сақтау және растау','Пропустить →':'Өткізіп жіберу →','Ближе к вам. Точнее до двери.':'Сізге жақын. Есігіңізге дейін дәл.',
+'Переключить тему':'Тақырыпты ауыстыру','Сортировка':'Сұрыптау','Закрыть':'Жабу','Ваше имя':'Атыңыз','Электронная почта':'Электрондық пошта','Пароль':'Құпиясөз','Показать пароль':'Құпиясөзді көрсету','Скрыть пароль':'Құпиясөзді жасыру','Не менее 10 символов.':'Кемінде 10 таңба.',
+'Область':'Облыс','Город':'Қала','Район':'Аудан','Жилмассив':'Тұрғын алап','Тип улицы':'Көше түрі','Улица':'Көше','Дом':'Үй','Кв.':'Пәтер','Подъезд':'Кіреберіс','Этаж':'Қабат','Ориентир':'Бағдар','Исходный адрес':'Бастапқы мекенжай','Уверенность':'Сенімділік',
+'Совпадений не найдено':'Сәйкестіктер табылмады','Добавьте адреса, чтобы увидеть результат.':'Нәтижені көру үшін мекенжайларды қосыңыз.','✓ Проверено человеком':'✓ Тексерілді','Исправлено вручную':'Қолмен түзетілді','Все выбранные адреса проверены.':'Таңдалған мекенжайлардың барлығы тексерілді.','Сначала добавьте и обработайте адреса.':'Алдымен мекенжайларды қосып, өңдеңіз.','Уточнено автоматически':'Автоматты түрде нақтыланды',
+'Введите хотя бы один адрес':'Кемінде бір мекенжай енгізіңіз','Не удалось прочитать файл.':'Файлды оқу мүмкін болмады.','Не удалось прочитать файл. Проверьте формат.':'Файлды оқу мүмкін болмады. Пішімін тексеріңіз.','Выберите файл .json или .txt':'JSON немесе TXT файлын таңдаңыз','Список адресов пуст.':'Мекенжайлар тізімі бос.','Не удалось обработать адреса. Попробуйте ещё раз.':'Мекенжайларды өңдеу мүмкін болмады. Қайталап көріңіз.','Сервис временно недоступен. Попробуйте позже.':'Қызмет уақытша қолжетімсіз. Кейінірек қайталаңыз.','Обработка заняла слишком много времени. Попробуйте меньший список.':'Өңдеу тым ұзаққа созылды. Қысқарақ тізімді қолданып көріңіз.',
+'Примеры добавлены. Можно начать обработку.':'Мысалдар қосылды. Өңдеуді бастауға болады.','Очищено. Добавьте новые адреса.':'Тазаланды. Жаңа мекенжайларды қосыңыз.','Скопировано.':'Көшірілді.','Не удалось скопировать. Скачайте файл.':'Көшіру мүмкін болмады. Файлды жүктеп алыңыз.','Повторить':'Қайталау','Измените поля и подтвердите':'Өрістерді түзетіп, растаңыз',
+'С возвращением':'Қайта келгеніңізге қуаныштымыз','Войдите в свой аккаунт Jana Post.':'Jana Post аккаунтыңызға кіріңіз.','Создать аккаунт':'Аккаунт ашу','Добро пожаловать в Jana Post.':'Jana Post қызметіне қош келдіңіз.','Уже есть аккаунт?':'Аккаунтыңыз бар ма?','Ещё нет аккаунта?':'Аккаунтыңыз жоқ па?','Зарегистрироваться':'Тіркелу','Аккаунт создан. Добро пожаловать!':'Аккаунт ашылды. Қош келдіңіз!','Вы вошли в аккаунт.':'Аккаунтқа кірдіңіз.','Вы вышли из аккаунта.':'Аккаунттан шықтыңыз.','Неверная почта или пароль.':'Пошта немесе құпиясөз қате.','Этот адрес почты уже зарегистрирован.':'Бұл пошта мекенжайы тіркелген.','Проверьте адрес электронной почты.':'Электрондық пошта мекенжайын тексеріңіз.','Укажите ваше имя.':'Атыңызды енгізіңіз.','Слишком много попыток. Попробуйте через 15 минут.':'Тым көп әрекет жасалды. 15 минуттан кейін қайталаңыз.','Проверьте заполненные поля. Пароль — от 10 до 128 символов.':'Толтырылған өрістерді тексеріңіз. Құпиясөз 10–128 таңбадан тұруы керек.','Не удалось подключиться. Попробуйте ещё раз.':'Қосылу мүмкін болмады. Қайталап көріңіз.'
+};
+function translateText(text){if(language!=='kk'||typeof text!=='string')return text;if(KK[text])return KK[text];return text
+.replace(/^Откатить строку (\d+)$/,'$1-жолдың өзгерістерін қайтару')
+.replace(/^Запись (\d+) \/ (\d+)$/,'$1 / $2 мекенжай')
+.replace(/^Проверено (\d+) из (\d+)$/,'$2 мекенжайдың $1-і тексерілді')
+.replace(/^(\d+) записей · Страница (\d+) из (\d+)$/,'$1 мекенжай · $2 / $3 бет')
+.replace(/^Разбираем (\d+) адресов…/,'$1 мекенжай өңделуде…')
+.replace(' Большой набор может занять больше времени.',' Үлкен тізімді өңдеу ұзағырақ болуы мүмкін.')
+.replace(/^Готово: (\d+) адресов · ([\d.]+) с · Нужна проверка: (\d+)$/,'Дайын: $1 мекенжай · $2 с · Тексеру қажет: $3')
+.replace(/^Загружен /,'Жүктелді: ').replace(' · Большой файл: обработка может занять время.',' · Үлкен файлды өңдеу ұзаққа созылуы мүмкін.')
+.replace(/^Запись (\d+): проверьте адрес\.$/,'$1-мекенжайды тексеріңіз.');}
+function translateStatic(){document.documentElement.lang=language;document.querySelectorAll('[data-i18n]').forEach(e=>{if(!e.dataset.ru)e.dataset.ru=e.textContent;const parts=e.dataset.ru.split('\n');e.textContent=parts.map(translateText).join('\n');});document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=translateText(e.dataset.i18nPlaceholder));document.querySelectorAll('[data-i18n-aria]').forEach(e=>e.setAttribute('aria-label',translateText(e.dataset.i18nAria)));document.querySelector('#language').value=language;}
+
+
 const FIELDS = [
   ["province","Область"],["city","Город"],["district","Район"],["living_area","Жилмассив"],
   ["street_type","Тип улицы"],["street_name","Улица"],["house","Дом"],["apartment","Кв."],
@@ -94,152 +79,191 @@ const ABBR = {
 let rows = [];
 
 const $ = id => document.getElementById(id);
-const status = (t, err) => { const s=$("status"); s.textContent=t; s.className = err ? "err" : ""; };
+const status = (t, err) => { const s=$("status"); s.textContent=translateText(t); s.className = err ? "err" : ""; };
 
-// легенда и шапка
-const legend = $("legend");
-FIELDS.forEach(([k,l]) => {
-  const c = document.createElement("span");
-  c.className = "chip"; c.style.background = `var(--c-${k})`; c.textContent = l;
-  legend.appendChild(c);
-});
-(function head(){
-  const tr = document.createElement("tr");
-  ["#","Исходный адрес",...FIELDS.map(f=>f[1]),"Уверенность"].forEach(t=>{
-    const th=document.createElement("th"); th.textContent=t; tr.appendChild(th);
-  });
-  $("thead").appendChild(tr);
-})();
 
-function isWordChar(ch){ return ch !== undefined && /[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(ch); }
 
-function findRange(raw, value, used, field){
-  if(value === null || value === undefined) return null;
-  value = String(value).trim();
-  if(!value) return null;
-  let cands = [value];
-  if(field === "street_type") cands = (ABBR[value.toLowerCase()] || []).concat(value);
-  const low = raw.toLowerCase();
-  for(const c of cands){
-    const needle = c.toLowerCase();
-    let from = 0;
-    while(true){
-      const i = low.indexOf(needle, from);
-      if(i < 0) break;
-      const j = i + needle.length;
-      const okL = !isWordChar(raw[i-1]) || !isWordChar(raw[i]);
-      const okR = !isWordChar(raw[j]) || !isWordChar(raw[j-1]);
-      const free = !used.some(([a,b]) => i < b && j > a);
-      if(okL && okR && free) return [i,j];
-      from = i + 1;
+// Те же варианты пропущенной буквы, что поддерживает парсер.
+for(const marker of ['переулок','проспект','микрорайон','бульвар']){
+  if(!ABBR[marker])ABBR[marker]=[marker];
+  for(let i=0;i<marker.length;i++)ABBR[marker].push(marker.slice(0,i)+marker.slice(i+1));
+}
+
+// Состояние интерфейса отделено от оригинального ответа API.
+const create=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
+const examples=['66квартал 12дом 69квартира','Ул .Курильская 9 кв 1','Туран 55/6 магазин береке 4подьезд 9этаж','Нурсити 2 микрорайон 11дом 5 подьезд 239 кв','город Алматы/Алматы қаласы, Мкр Аксай 3а, 59, кв 70'];
+let original=[],reviewed=new Set(),disabledFields=new Set(),page=0,tokenIndex=0,queueIndex=0,activeTab='parse',threshold=.6;
+const confidence=r=>typeof r.confidence==='number'&&Number.isFinite(r.confidence)?r.confidence:0;
+const clone=x=>JSON.parse(JSON.stringify(x));
+function save(key,value){try{localStorage.setItem(key,value);}catch{}}
+function load(key){try{return localStorage.getItem(key);}catch{return null;}}
+let theme=load('jana-theme')||'light';
+function applyTheme(){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-pressed',String(theme==='dark'));}applyTheme();
+$('theme').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();save('jana-theme',theme);};
+const saved=load('jana-threshold');if(saved!==null&&Number.isFinite(+saved)&&+saved>=0&&+saved<=1)threshold=+saved;$('threshold').value=threshold;
+function tab(name){
+  activeTab=name;
+  document.querySelectorAll('[role=tabpanel]').forEach(panel=>panel.hidden=panel.id!==name);
+  document.querySelectorAll('[data-tab]').forEach(button=>button.setAttribute('aria-selected',String(button.dataset.tab===name)));
+  const title=$('title'),subtitle=$('subtitle');title.textContent='';
+  if(name==='parse'){
+    title.append(document.createTextNode(language==='kk'?'Әр мекенжай.':'Каждый адрес.'),create('br'),create('span',language==='kk'?'Өз орнында.':'На своём месте.'));
+    subtitle.textContent=language==='kk'?'Мекенжайларды қосыңыз — бәрін ретке келтіреміз. Сізге тек тексеріп, сақтау қалады.':'Добавьте адреса — мы разложим всё по полочкам. Вам останется проверить и сохранить.';
+  }else{
+    title.textContent=translateText(name==='tokens'?'Детали адреса':name==='errors'?'Ошибки и исправления':'Неуверенные сначала');
+    subtitle.textContent=translateText(name==='tokens'?'Нажмите на поле, чтобы внести изменения.':name==='errors'?'Примеры, которые помогли улучшить распознавание.':'Проверьте выделенные адреса и при необходимости исправьте поля.');
+  }
+  document.querySelector('.hero-card').hidden=name!=='parse';document.querySelector('.hero-steps').hidden=name!=='parse';
+  if(name==='tokens')renderTokens();if(name==='queue')renderQueue();if(name==='errors')renderErrors();
+}
+document.querySelectorAll('[data-tab]').forEach(e=>{e.onclick=()=>tab(e.dataset.tab);e.onkeydown=event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-tab]')];const next=tabs[(tabs.indexOf(e)+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];next.focus();tab(next.dataset.tab);};});
+// Карта позиций игнорирует невидимые символы, сохраняя raw_address побайтно в запросе.
+function searchable(raw){
+  let text='',map=[],previous='';
+  for(let i=0;i<raw.length;i++){
+    const current=raw[i];
+    if(/[\u200b-\u200f\u2060\ufeff\u00ad]/.test(current))continue;
+    // Виртуальный пробел связывает «Коктал1» с «Коктал 1», не меняя raw_address.
+    if(previous&&((/\p{L}/u.test(previous)&&/\d/.test(current))||(/\d/.test(previous)&&/\p{L}/u.test(current)))){text+=' ';map.push(i);}
+    text+=current.toLowerCase();map.push(i);previous=current;
+  }
+  return {text,map};
+}
+const word=c=>!!c&&/[\p{L}\p{N}_]/u.test(c),digit=c=>!!c&&/\d/.test(c);
+function findRange(raw,value,used,field){if(value==null||String(value)==='')return null;const {text,map}=searchable(raw);const candidates=field==='street_type'?(ABBR[String(value).toLowerCase()]||[String(value)]):[String(value)];for(const candidate of candidates){const needle=searchable(candidate).text;let from=0;while(needle&&from<text.length){const i=text.indexOf(needle,from);if(i<0)break;const j=i+needle.length,left=!word(text[i-1])||digit(text[i-1])!==digit(text[i]),right=!word(text[j])||digit(text[j-1])!==digit(text[j]);const a=map[i],b=map[j-1]+1;if(left&&right&&!used.some(([x,y])=>a<y&&b>x))return [a,b];from=i+1;}}return null;}
+// Подсвечиваем число вместе с маркером поля, включая слитное написание.
+function ranges(row){
+  const raw=String(row.raw_address??''),used=[],marks=[];
+  const markers={living_area:'ж\\s*[./]?\\s*м[.]?|жилмассив|жилой\\s+массив|тұрғын\\s+алап',house:'дом|дм|д',apartment:'квартира|кварт|кв|flat|kv|апт',entrance:'подъезд|подьезд|подьедз|подъедз|подезд|подъ|под',floor:'этаж|эт|floor'};
+  FIELDS.map(([k])=>k).sort((a,b)=>String(row[b]??'').length-String(row[a]??'').length).forEach(k=>{
+    const range=findRange(raw,row[k],used,k);if(!range)return;
+    let [a,b]=range;
+    if(markers[k]){
+      const prefix=new RegExp('(?<![\\p{L}])(?:'+markers[k]+')[.\\s]*$','iu').exec(raw.slice(0,a));
+      const suffix=new RegExp('^[.\\s]*(?:'+markers[k]+')(?![\\p{L}])','iu').exec(raw.slice(b));
+      const x=prefix?prefix.index:a,y=suffix?b+suffix[0].length:b;
+      if(!used.some(([u,v])=>x<v&&y>u)){a=x;b=y;}
     }
-  }
-  return null;
-}
-
-function renderRaw(td, r){
-  td.textContent = "";
-  const raw = r.raw_address == null ? "" : String(r.raw_address);
-  const used = [], marks = [];
-  // сначала длинные значения, чтобы короткие числа не заняли чужое место
-  FIELDS.map(([k])=>k)
-    .sort((a,b)=>String(r[b]||"").length - String(r[a]||"").length)
-    .forEach(k=>{
-      const rg = findRange(raw, r[k], used, k);
-      if(rg){ used.push(rg); marks.push([rg[0],rg[1],k]); }
-    });
-  marks.sort((a,b)=>a[0]-b[0]);
-  let pos = 0;
-  marks.forEach(([a,b,k])=>{
-    if(a > pos) td.appendChild(document.createTextNode(raw.slice(pos,a)));
-    const m = document.createElement("mark");
-    m.style.background = `var(--c-${k})`; m.title = FIELDS.find(f=>f[0]===k)[1];
-    m.textContent = raw.slice(a,b); td.appendChild(m); pos = b;
+    used.push([a,b]);marks.push([a,b,k]);
   });
-  if(pos < raw.length) td.appendChild(document.createTextNode(raw.slice(pos)));
+  return marks.sort((a,b)=>a[0]-b[0]);
 }
+function renderRaw(target,row){target.textContent='';const raw=String(row.raw_address??'');let position=0;for(const [a,b,key] of ranges(row)){target.append(document.createTextNode(raw.slice(position,a)));const mark=create(disabledFields.has(key)?'span':'mark',raw.slice(a,b));if(!disabledFields.has(key))mark.style.background=translateText(`var(--c-${key})`);mark.title=fieldLabel(row,key);target.append(mark);position=b;}target.append(document.createTextNode(raw.slice(position)));}
+function renderLegends(){for(const id of ['legend','tokenLegend']){$(id).textContent='';FIELDS.forEach(([k,label])=>{const chip=create('button',translateText(label),'chip');chip.style.background=translateText(`var(--c-${k})`);chip.setAttribute('aria-pressed',String(!disabledFields.has(k)));chip.onclick=()=>{disabledFields.has(k)?disabledFields.delete(k):disabledFields.add(k);renderLegends();renderTable();renderTokens();renderQueue();};$(id).append(chip);});}}
+function badge(row){const c=confidence(row);return create('span',translateText(`${Math.round(c*100)}%`),'badge '+(c>=.8?'good':c>=.6?'medium':'low'));}
+function updateStats(){const n=rows.length;$('total').textContent=n;$('average').textContent=n?Math.round(rows.reduce((s,r)=>s+confidence(r),0)/n*100)+'%':'—';const low=rows.filter((row,index)=>confidence(row)<threshold&&!reviewed.has(index)).length;$('uncertain').textContent=low;$('qcount').textContent=low;$('filled').textContent=n?Math.round(rows.reduce((s,r)=>s+FIELDS.filter(([k])=>r[k]!=null&&r[k]!=='').length,0)/(n*FIELDS.length)*100)+'%':'—';$('coverage').textContent='';FIELDS.forEach(([k,label])=>{$('coverage').append(create('span',translateText(`${label}: ${n?Math.round(rows.filter(r=>r[k]!=null&&r[k]!=='').length/n*100):0}%`)));});$('thresholdValue').textContent=threshold.toFixed(2);['dlJson','dlCsv','copy','undo','queueJson','queueCsv'].forEach(id=>$(id).disabled=!n);updateValidationSummary();}
+function filteredRows(){let list=rows.map((row,index)=>({row,index}));const query=$('search').value.toLocaleLowerCase();if(query)list=list.filter(({row})=>Object.values(row).some(v=>String(v??'').toLocaleLowerCase().includes(query)));if($('onlylow').checked)list=list.filter(({row})=>confidence(row)<threshold);if($('sort').value!=='original')list.sort((a,b)=>(confidence(a.row)-confidence(b.row))*($('sort').value==='asc'?1:-1));return list;}
+function revert(index){rows[index]=clone(original[index]);reviewed.delete(index);refresh();}
+function renderTable(){const list=filteredRows(),pages=Math.max(1,Math.ceil(list.length/50));page=Math.min(page,pages-1);$('tbody').textContent='';if(!list.length){const tr=create('tr'),td=create('td');td.colSpan=14;td.className='empty';td.textContent=rows.length?translateText('Совпадений не найдено'):translateText('Добавьте адреса, чтобы увидеть результат.');tr.append(td);$('tbody').append(tr);}for(const {row,index} of list.slice(page*50,page*50+50)){const tr=create('tr'),number=create('td',index+1),undo=create('button','↶');undo.title=translateText('Отменить изменения');undo.setAttribute('aria-label','Откатить строку '+(index+1));undo.onclick=()=>revert(index);number.append(undo);tr.append(number);const raw=create('td',undefined,'raw');renderRaw(raw,row);if(reviewed.has(index))raw.append(create('div',translateText('✓ Проверено человеком'),'tag'));tr.append(raw);FIELDS.forEach(([k,label])=>{const td=create('td',row[k]??'','f');td.contentEditable='plaintext-only';td.setAttribute('aria-label',`${translateText(label)}, ${index+1}`);td.style.background=row[k]?translateText(`var(--c-${k})`):'';td.classList.toggle('edited',row[k]!==original[index][k]);td.oninput=()=>{row[k]=td.textContent.trim()||null;reviewed.delete(index);td.classList.toggle('edited',row[k]!==original[index][k]);td.title=row[k]!==original[index][k]?translateText('Исправлено вручную'):'';td.style.background=row[k]?translateText(`var(--c-${k})`):'';renderRaw(raw,row);updateStats();};td.onblur=()=>renderTable();td.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();td.blur();}};tr.append(td);});const conf=create('td');conf.append(badge(row));tr.append(conf);$('tbody').append(tr);}$('page').textContent=translateText(`${list.length} записей · Страница ${page+1} из ${pages}`);$('prev').disabled=page===0;$('next').disabled=page>=pages-1;}
+function renderDetail(target,index,editable){
+  target.textContent='';
+  if(index===undefined||!rows[index]){target.append(create('div',rows.length?translateText('Все выбранные адреса проверены.'):translateText('Сначала добавьте и обработайте адреса.'),'empty'));return;}
+  const row=rows[index],grid=create('div',undefined,'detail'),left=create('div'),raw=create('div',undefined,'bigraw');
+  renderRaw(raw,row);
+  left.append(create('p',translateText(`Запись ${index+1} / ${rows.length}`),'eyebrow'),raw,badge(row));
+  if(reviewed.has(index))left.append(create('p',translateText('✓ Проверено человеком'),'tag'));
+  const checks=create('div',undefined,'record-checks');renderChecks(checks,row);left.append(checks);
+  const fields=create('div',undefined,'fields');
+  FIELDS.forEach(([key,label])=>{
+    const box=create('div',undefined,'field');box.append(create('label',fieldLabel(row,key)));
+    box.classList.toggle('edited',row[key]!==original[index][key]);
+    const note=create('small',translateText('Не найдено в исходной строке'),'muted');
+    const updateNote=()=>{note.hidden=!row[key]||ranges(row).some(range=>range[2]===key);};
+    if(editable){
+      const input=create('input');input.value=row[key]??'';input.setAttribute('aria-label',fieldLabel(row,key));input.dataset.field=key;
+      input.oninput=()=>{row[key]=input.value.trim()||null;reviewed.delete(index);left.querySelector('.tag')?.remove();box.classList.toggle('edited',row[key]!==original[index][key]);box.title=row[key]!==original[index][key]?translateText('Исправлено вручную'):'';renderRaw(raw,row);updateNote();renderChecks(checks,row);updateStats();};
+      input.onblur=()=>renderTable();box.append(input);
+    }else box.append(create('div',row[key]??'—'));
+    updateNote();box.append(note);fields.append(box);
+  });grid.append(left,fields);target.append(grid);
+}
+function renderTokens(){tokenIndex=Math.max(0,Math.min(tokenIndex,rows.length-1));$('recordSelect').textContent='';for(let i=0;i<rows.length;i++){const option=create('option',translateText(`${i+1}. ${String(rows[i].raw_address??'').slice(0,80)}`));option.value=i;$('recordSelect').append(option);}$('recordSelect').value=tokenIndex;$('tokenPrev').disabled=!rows.length||tokenIndex===0;$('tokenNext').disabled=!rows.length||tokenIndex===rows.length-1;$('tokenUndo').disabled=!rows.length;renderDetail($('tokenDetail'),rows.length?tokenIndex:undefined,true);}
+function queueItems(){return rows.map((r,i)=>i).filter(i=>$('queueAll').checked||confidence(rows[i])<threshold).sort((a,b)=>confidence(rows[a])-confidence(rows[b]));}
+function renderQueue(){const items=queueItems(),pending=items.filter(i=>!reviewed.has(i));queueIndex=Math.max(0,Math.min(queueIndex,pending.length-1));const count=items.filter(i=>reviewed.has(i)).length;$('progressText').textContent=translateText(`Проверено ${count} из ${items.length}`);$('progress').max=items.length||1;$('progress').value=count;renderDetail($('queueDetail'),pending[queueIndex],true);['confirm','fixConfirm','skip','queueBack'].forEach(id=>$(id).disabled=!pending.length);}
+function confirm(){const pending=queueItems().filter(i=>!reviewed.has(i));if(pending[queueIndex]!==undefined)reviewed.add(pending[queueIndex]);refresh();}
+function refresh(){updateStats();renderTable();if(activeTab==='tokens')renderTokens();if(activeTab==='queue')renderQueue();}
+// API: raw_address и id передаются без очистки и нормализации.
+function buildPayload(text){if(!text.trim())throw Error(translateText('Введите хотя бы один адрес'));if(/^[\s]*[\[{]/.test(text)){let data;try{data=JSON.parse(text);}catch{throw Error(translateText('Не удалось прочитать файл. Проверьте формат.'));}const list=Array.isArray(data)?data:(data.records||data.data||data.items||data.addresses||(Object.hasOwn(data,'raw_address')?[data]:null));if(!Array.isArray(list))throw Error(translateText('Не удалось прочитать файл. Проверьте формат.'));return list.map((item,i)=>{if(typeof item==='string')return {id:i+1,raw_address:item};if(!item||typeof item!=='object'||typeof item.raw_address!=='string')throw Error(translateText(`Запись ${i+1}: проверьте адрес.`));return {id:item.id,raw_address:item.raw_address};});}return text.split(/\r?\n/).filter(s=>s.trim()!=='').map((raw_address,i)=>({id:i+1,raw_address}));}
+async function run(){let payload;try{payload=buildPayload($('input').value);if(!payload.length)throw Error(translateText('Список адресов пуст.'));}catch(e){status(e.message,true);return;}$('run').disabled=true;$('clear').disabled=true;$('run').classList.add('busy');$('parse').setAttribute('aria-busy','true');$('retry').hidden=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),120000),start=performance.now();status(translateText(`Разбираем ${payload.length} адресов…${payload.length>1000?' Большой набор может занять больше времени.':''}`));try{const resp=await fetch('/parse/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});if(!resp.ok)throw Error(translateText('Сервис временно недоступен. Попробуйте позже.'));const data=await resp.json(),result=Array.isArray(data)?data:(data.results||data.records);if(!Array.isArray(result)||result.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw Error(translateText('Не удалось обработать адреса. Попробуйте ещё раз.'));rows=result;original=clone(rows);reviewed.clear();page=tokenIndex=queueIndex=0;refresh();status(translateText(`Готово: ${rows.length} адресов · ${((performance.now()-start)/1000).toFixed(2)} с · Нужна проверка: ${rows.filter(r=>confidence(r)<threshold).length}`));}catch(e){status(e.name==='AbortError'?translateText('Обработка заняла слишком много времени. Попробуйте меньший список.'):translateText('Сервис временно недоступен. Попробуйте позже.'),true);$('retry').hidden=false;}finally{clearTimeout(timeout);$('run').disabled=false;$('clear').disabled=false;$('run').classList.remove('busy');$('parse').removeAttribute('aria-busy');}}
+async function readFile(file){if(!file)return;if(!/\.(txt|json)$/i.test(file.name)){status(translateText('Выберите файл .json или .txt'),true);return;}try{$('input').value=await file.text();status(translateText(`Загружен ${file.name}${file.size>5*1024*1024?' · Большой файл: обработка может занять время.':''}`));}catch{status(translateText('Не удалось прочитать файл.'),true);}}
+function exportRows(){return rows.map((r,i)=>$('exportReviewed').checked?{...r,reviewed:reviewed.has(i)}:{...r});}
+function download(name,mime,text){const url=URL.createObjectURL(new Blob([text],{type:mime})),a=create('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function csvText(data){const cols=[...new Set(data.flatMap(r=>Object.keys(r)))];const esc=v=>{const s=v==null?'':String(v);return /[",;\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};return '\ufeff'+[cols.map(esc).join(','),...data.map(r=>cols.map(k=>esc(r[k])).join(','))].join('\r\n');}
+$('run').onclick=$('retry').onclick=run;$('example').onclick=()=>{$('input').value=examples.join('\n');status(translateText('Примеры добавлены. Можно начать обработку.'));};$('clear').onclick=()=>{$('input').value='';rows=[];original=[];reviewed.clear();refresh();status(translateText('Очищено. Добавьте новые адреса.'));};$('file').onchange=e=>{readFile(e.target.files[0]);e.target.value='';};document.querySelector('label[for=file]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('file').click();}};$('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('over');};$('drop').ondragleave=()=>$('drop').classList.remove('over');$('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('over');readFile(e.dataTransfer.files[0]);};
+$('dlJson').onclick=()=>download('jana-address.json','application/json',JSON.stringify(exportRows(),null,2));$('dlCsv').onclick=()=>download('jana-address.csv','text/csv;charset=utf-8',csvText(exportRows()));$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(exportRows(),null,2));status(translateText('Скопировано.'));}catch{status(translateText('Не удалось скопировать. Скачайте файл.'),true);}};
+$('undo').onclick=()=>{rows=clone(original);reviewed.clear();refresh();};['search','sort','onlylow'].forEach(id=>$(id).addEventListener('input',()=>{page=0;renderTable();}));$('threshold').oninput=()=>{threshold=+$('threshold').value;save('jana-threshold',threshold);queueIndex=0;refresh();};$('prev').onclick=()=>{page--;renderTable();};$('next').onclick=()=>{page++;renderTable();};$('tokenPrev').onclick=()=>{tokenIndex--;renderTokens();};$('tokenNext').onclick=()=>{tokenIndex++;renderTokens();};$('recordSelect').onchange=()=>{tokenIndex=+$('recordSelect').value;renderTokens();};$('queueAll').onchange=()=>{queueIndex=0;renderQueue();};$('confirm').onclick=$('fixConfirm').onclick=confirm;$('fixConfirm').title=translateText('Измените поля и подтвердите');$('skip').onclick=()=>{const length=queueItems().filter(i=>!reviewed.has(i)).length;queueIndex=(queueIndex+1)%Math.max(1,length);renderQueue();};$('queueBack').onclick=()=>{queueIndex=Math.max(0,queueIndex-1);renderQueue();};document.addEventListener('keydown',e=>{if(activeTab!=='queue'||e.target.closest('input,textarea,select,button,[contenteditable]'))return;if(['Enter','ArrowRight','ArrowLeft'].includes(e.key)){e.preventDefault();if(e.key==='Enter')confirm();else $(e.key==='ArrowRight'?'skip':'queueBack').click();}});
+renderLegends();refresh();
 
-function render(){
-  const tb = $("tbody"); tb.textContent = "";
-  if(!rows.length){
-    const tr=document.createElement("tr"), td=document.createElement("td");
-    td.className="empty"; td.textContent="Пока нет результатов"; tr.appendChild(td); tb.appendChild(tr);
-    return;
+// Проверки помогают оператору, но не подменяют исходные поля.
+function fieldLabel(row,key){
+  if(key==='street_name'&&row.street_type==='квартал')return translateText('Квартал');
+  if(key==='street_name'&&row.street_type==='микрорайон')return translateText('Микрорайон');
+  return translateText(FIELDS.find(([name])=>name===key)?.[1]||key);
+}
+function recordChecks(row){
+  const checks=[];
+  if(!row.house)checks.push(translateText('Не указан дом.'));
+  if(!row.street_name&&!row.living_area)checks.push(translateText('Не указана улица или жилмассив.'));
+  if(!row.city)checks.push(translateText('Не указан город.'));
+  const normalize=value=>String(value||'').toLocaleLowerCase().replace(/(?:^|\s)(?:город|область)(?=\s|$)/gu,'').replace(/(?:қаласы|облысы)/gu,'').trim();
+  const city=String(row.city||'').toLocaleLowerCase().trim(),province=normalize(row.province);
+  const independent={'астана':'астана','нур-султан':'астана','алматы':'алматы','шымкент':'шымкент'};
+  if(independent[city]&&province&&province!==independent[city])checks.push(translateText('Город и область не согласованы. Проверьте географию.'));
+  if(confidence(row)<threshold)checks.push(translateText('Низкая уверенность: проверьте поля перед подтверждением.'));
+  return checks;
+}
+function renderChecks(target,row){
+  target.textContent='';
+  const checks=recordChecks(row);
+  target.hidden=!checks.length;
+  if(checks.length){target.append(create('strong',translateText('Обратите внимание')));const list=create('ul');checks.forEach(text=>list.append(create('li',text)));target.append(list);}
+}
+function updateValidationSummary(){
+  const count=rows.filter(row=>recordChecks(row).length).length;
+  $('validationSummary').hidden=!count;
+  $('validationSummary').textContent=language==='kk'?`${count} мекенжайды тексеріңіз. Мәліметтер мен ескертулер мекенжай карточкасында көрсетілген.`:`Проверьте адреса: ${count}. Подсказки и замечания доступны в деталях каждого адреса.`;
+}
+const ERROR_CASES=JSON.parse($('errors-data').textContent);
+function renderErrors(){
+  const previous=$('errorCategory').value;
+  $('errorCategory').textContent='';
+  const all=create('option',translateText('Все категории'));all.value='';$('errorCategory').append(all);
+  for(const key of new Set(ERROR_CASES.map(entry=>entry.category.ru))){const entry=ERROR_CASES.find(item=>item.category.ru===key),option=create('option',entry.category[language]);option.value=key;$('errorCategory').append(option);}
+  $('errorCategory').value=previous;
+  const category=$('errorCategory').value,query=$('errorSearch').value.toLocaleLowerCase();
+  $('errorsBody').textContent='';
+  for(const entry of ERROR_CASES){
+    const text=[entry.example,entry.category[language],entry.before[language],entry.fix[language],...Object.values(entry.expected)].join(' ').toLocaleLowerCase();
+    if((category&&category!==entry.category.ru)||(query&&!text.includes(query)))continue;
+    const row=create('tr'),first=create('td');first.append(create('strong',entry.category[language]),create('p',entry.example));
+    const result=create('td'),list=create('dl',undefined,'expected-fields');
+    Object.entries(entry.expected).forEach(([key,value])=>{if(key==='confidence'){list.append(create('dt',translateText('Уверенность')),create('dd',`${Math.round(value*100)}%`));}else list.append(create('dt',fieldLabel(entry.expected,key)),create('dd',value??'—'));});
+    result.append(create('span',translateText('Проверено тестом'),'badge good'),list);
+    const action=create('td'),button=create('button',translateText('Проверить пример'));button.onclick=()=>{$('input').value=entry.example;tab('parse');run();};action.append(button);
+    row.append(first,create('td',entry.before[language]),create('td',entry.fix[language]),result,action);$('errorsBody').append(row);
   }
-  rows.forEach((r,idx)=>{
-    const tr = document.createElement("tr");
-    const conf = typeof r.confidence === "number" ? r.confidence : 0;
-    if(conf < 0.6) tr.className = "low";
-    const n = document.createElement("td"); n.className="num"; n.textContent = idx+1; tr.appendChild(n);
-    const raw = document.createElement("td"); raw.className="raw"; renderRaw(raw, r); tr.appendChild(raw);
-    FIELDS.forEach(([k])=>{
-      const td = document.createElement("td");
-      td.className = "f"; td.contentEditable = "plaintext-only"; td.tabIndex = 0;
-      td.style.background = r[k] ? `var(--c-${k})` : "";
-      td.textContent = r[k] == null ? "" : r[k];
-      td.addEventListener("input", ()=>{
-        const v = td.textContent.trim();
-        r[k] = v === "" ? null : v;
-        td.style.background = r[k] ? `var(--c-${k})` : "";
-        renderRaw(raw, r);
-      });
-      td.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); td.blur(); } });
-      tr.appendChild(td);
-    });
-    const c = document.createElement("td"); c.className = "conf" + (conf<0.6 ? " low" : "");
-    c.textContent = conf.toFixed(2); tr.appendChild(c);
-    tb.appendChild(tr);
-  });
-  $("dlJson").disabled = $("dlCsv").disabled = false;
+  if(!$('errorsBody').children.length){const row=create('tr'),cell=create('td',translateText('Совпадений не найдено'),'empty');cell.colSpan=5;row.append(cell);$('errorsBody').append(row);}
 }
+$('errorSearch').oninput=$('errorCategory').onchange=renderErrors;
+$('tokenDemo').onclick=async()=>{$('input').value='66квартал 12дом 69квартира';await run();if(rows.length)tab('tokens');};
+$('tokenUndo').onclick=()=>{if(rows[tokenIndex])revert(tokenIndex);};
+$('queueJson').onclick=()=>$('dlJson').click();$('queueCsv').onclick=()=>$('dlCsv').click();
+$('queueReviewed').onchange=()=>{$('exportReviewed').checked=$('queueReviewed').checked;};
+$('exportReviewed').onchange=()=>{$('queueReviewed').checked=$('exportReviewed').checked;};
 
-function buildPayload(text){
-  const t = text.trim();
-  if(!t) return null;
-  if(t[0] === "[" || t[0] === "{"){
-    try { return JSON.parse(t); } catch(e) { throw new Error("Не удалось прочитать JSON: " + e.message); }
-  }
-  return t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map((s,i)=>({id:i+1, raw_address:s}));
-}
-
-async function run(){
-  let payload;
-  try { payload = buildPayload($("input").value); } catch(e){ status(e.message, true); return; }
-  if(!payload){ status("Введите хотя бы один адрес", true); return; }
-  $("run").disabled = true; status("Разбираю…");
-  try{
-    const resp = await fetch("/parse/batch", {
-      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)
-    });
-    if(!resp.ok) throw new Error("Сервер ответил " + resp.status);
-    const data = await resp.json();
-    rows = Array.isArray(data) ? data : (data.results || data.records || []);
-    status("Готово: " + rows.length + " адресов");
-    render();
-  }catch(e){
-    status("Ошибка: " + e.message + ". Проверьте, что сервер запущен.", true);
-  }finally{ $("run").disabled = false; }
-}
-
-function download(name, mime, text){
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], {type:mime}));
-  a.download = name; a.click(); URL.revokeObjectURL(a.href);
-}
-$("run").addEventListener("click", run);
-$("file").addEventListener("change", e=>{
-  const f = e.target.files[0]; if(!f) return;
-  const rd = new FileReader();
-  rd.onload = ()=>{ $("input").value = rd.result; status("Файл загружен: " + f.name); };
-  rd.readAsText(f);
-});
-$("dlJson").addEventListener("click", ()=> download("result.json","application/json", JSON.stringify(rows,null,2)));
-$("dlCsv").addEventListener("click", ()=>{
-  const cols = ["id","raw_address",...FIELDS.map(f=>f[0]),"confidence"];
-  const esc = v => { v = v == null ? "" : String(v); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; };
-  const csv = [cols.join(",")].concat(rows.map(r=>cols.map(c=>esc(r[c])).join(","))).join("\n");
-  download("result.csv","text/csv;charset=utf-8", "\ufeff" + csv);
-});
-</script>
-</body>
-</html>
+let authMode='login',currentUser=null,authErrorKey='',authPending=false;
+const dialog=$('authDialog');
+function toast(text){$('toast').textContent=translateText(text);$('toast').hidden=false;setTimeout(()=>$('toast').hidden=true,3500);}
+function authCopy(){const registration=authMode==='register';$('authTitle').textContent=translateText(registration?'Создать аккаунт':'С возвращением');$('authSubtitle').textContent=translateText(registration?'Добро пожаловать в Jana Post.':'Войдите в свой аккаунт Jana Post.');$('nameGroup').hidden=!registration;$('authName').required=registration;$('passwordHint').hidden=!registration;$('authPassword').autocomplete=registration?'new-password':'current-password';$('authSubmit').textContent=translateText(registration?'Зарегистрироваться':'Войти');$('authSwitchText').textContent=translateText(registration?'Уже есть аккаунт?':'Ещё нет аккаунта?');$('authSwitch').textContent=translateText(registration?'Войти':'Регистрация');$('authError').textContent=translateText(authErrorKey);}
+function openAuth(mode){authMode=mode;authErrorKey='';$('authForm').reset();$('authPassword').type='password';$('showPassword').setAttribute('aria-label',translateText('Показать пароль'));authCopy();dialog.showModal();}
+function setUser(user){currentUser=user;$('openLogin').hidden=!!user;$('openRegister').hidden=!!user;$('account').hidden=!user;$('accountName').textContent=user?.name||'';$('accountName').dataset.initial=user?.name?.trim().charAt(0).toUpperCase()||'';$('accountName').setAttribute('aria-label',user?.name||'');$('accountName').title=user?.email||'';}
+async function accountRequest(path,body){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch('/auth/'+path,{method:body===undefined?'GET':'POST',credentials:'same-origin',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});let data;try{data=await response.json();}catch{throw Error('Не удалось подключиться. Попробуйте ещё раз.');}if(!response.ok){const messages={invalid_credentials:'Неверная почта или пароль.',email_exists:'Этот адрес почты уже зарегистрирован.',invalid_email:'Проверьте адрес электронной почты.',invalid_name:'Укажите ваше имя.',too_many_attempts:'Слишком много попыток. Попробуйте через 15 минут.'};throw Error(messages[data.detail]||(response.status===422?'Проверьте заполненные поля. Пароль — от 10 до 128 символов.':'Не удалось подключиться. Попробуйте ещё раз.'));}return data;}catch(error){if(error.name==='AbortError'||error instanceof TypeError)throw Error('Не удалось подключиться. Попробуйте ещё раз.');throw error;}finally{clearTimeout(timer);}}
+$('openLogin').onclick=()=>openAuth('login');$('openRegister').onclick=()=>openAuth('register');$('closeAuth').onclick=()=>dialog.close();dialog.addEventListener('click',event=>{const rect=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom))dialog.close();});dialog.addEventListener('close',()=>{$('authPassword').value='';});$('authSwitch').onclick=()=>{authMode=authMode==='login'?'register':'login';authErrorKey='';$('authPassword').value='';authCopy();};
+$('showPassword').onclick=()=>{const show=$('authPassword').type==='password';$('authPassword').type=show?'text':'password';$('showPassword').setAttribute('aria-label',translateText(show?'Скрыть пароль':'Показать пароль'));};
+$('authForm').onsubmit=async event=>{event.preventDefault();if(authPending||!$('authForm').reportValidity())return;authPending=true;const mode=authMode;authErrorKey='';authCopy();$('authForm').setAttribute('aria-busy','true');$('authSubmit').disabled=true;$('authSwitch').disabled=true;try{const body={email:$('authEmail').value,password:$('authPassword').value};if(mode==='register')body.name=$('authName').value;const data=await accountRequest(mode,body);setUser(data.user);dialog.close();toast(mode==='register'?'Аккаунт создан. Добро пожаловать!':'Вы вошли в аккаунт.');}catch(error){authErrorKey=error.message;authCopy();}finally{authPending=false;$('authSubmit').disabled=false;$('authSwitch').disabled=false;$('authForm').removeAttribute('aria-busy');}};
+$('logout').onclick=async()=>{$('logout').disabled=true;try{await accountRequest('logout',{});setUser(null);toast('Вы вышли из аккаунта.');}catch(error){toast(error.message);}finally{$('logout').disabled=false;}};
+function renderHead(){$('thead').textContent='';const row=create('tr');['#','Исходный адрес',...FIELDS.map(f=>f[1]),'Уверенность'].forEach(label=>row.append(create('th',translateText(label))));$('thead').append(row);}
+function applyLanguage(){translateStatic();renderHead();renderLegends();refresh();tab(activeTab);renderErrors();authCopy();if(!rows.length)status('Добавьте адреса, чтобы начать.');}
+$('language').onchange=()=>{language=$('language').value;save('jana-language',language);applyLanguage();};
+applyLanguage();accountRequest('me').then(data=>setUser(data.user)).catch(()=>setUser(null));
+</script></body></html>
