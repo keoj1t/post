@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Разбор адресов</title>
+<style>
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --ink:#1b2530; --muted:#66727f; --line:#d9dfe5; --accent:#1f5d7a; --accent-ink:#fff;
+  --warn:#c4472d;
+  --c-province:#cfe3f5; --c-city:#cdeed9; --c-district:#f6e6b4; --c-living_area:#e7d6f3; --c-street_type:#f9d5d0;
+  --c-street_name:#ffd9a8; --c-house:#bfe9e6; --c-apartment:#dfe3a8; --c-entrance:#f3c9e0; --c-floor:#d4dbe8; --c-landmark:#e3d3c4;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#12171c; --panel:#1b222a; --ink:#e6ebf0; --muted:#93a0ad; --line:#2d3742; --accent:#5fb0d3; --accent-ink:#0d1a22; --warn:#ff8a70;
+    --c-province:#27465f; --c-city:#21503a; --c-district:#5b4c1c; --c-living_area:#4a3560; --c-street_type:#613531;
+    --c-street_name:#68451c; --c-house:#1f524f; --c-apartment:#4d5220; --c-entrance:#612d49; --c-floor:#37415a; --c-landmark:#4f3f31;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{padding:20px 24px 8px}
+h1{margin:0 0 4px;font-size:22px;font-weight:650}
+header p{margin:0;color:var(--muted)}
+main{padding:12px 24px 40px;display:grid;gap:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+textarea{width:100%;min-height:110px;resize:vertical;border:1px solid var(--line);border-radius:6px;padding:10px;background:var(--bg);color:var(--ink);font:inherit}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 14px;border-radius:6px;cursor:pointer}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,textarea:focus-visible,td:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.spacer{flex:1}
+#status{color:var(--muted)}
+#status.err{color:var(--warn)}
+.legend{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chip{padding:2px 8px;border-radius:4px;font-size:13px}
+.wrap{overflow:auto;border:1px solid var(--line);border-radius:6px;max-height:70vh}
+table{border-collapse:collapse;width:100%;min-width:1500px;background:var(--panel)}
+th,td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top;font-size:14px}
+th{position:sticky;top:0;background:var(--bg);font-weight:600;z-index:1;white-space:nowrap}
+td.f{min-width:90px;cursor:text;background-clip:padding-box}
+td.f:empty::before{content:"—";color:var(--muted)}
+td.raw{min-width:300px;max-width:380px;line-height:1.8}
+td.num{color:var(--muted);text-align:right}
+tr.low td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+mark{color:inherit;border-radius:3px;padding:1px 3px}
+.conf{font-variant-numeric:tabular-nums;white-space:nowrap}
+.conf.low{color:var(--warn);font-weight:600}
+.empty{color:var(--muted);padding:24px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Разбор адресов</h1>
+  <p>Вставьте адреса (по одному в строке) или JSON, нажмите «Разобрать». Ячейки результата можно править.</p>
+</header>
+<main>
+  <section class="panel">
+    <textarea id="input" placeholder="Алматы Тимирязева 42 кв 10 2 этаж&#10;Актобе Абая 5" aria-label="Адреса"></textarea>
+    <div class="bar">
+      <button class="primary" id="run">Разобрать</button>
+      <label class="btn">Загрузить JSON<input id="file" type="file" accept=".json,.txt" hidden></label>
+      <span id="status" role="status"></span>
+      <span class="spacer"></span>
+      <button id="dlJson" disabled>Скачать JSON</button>
+      <button id="dlCsv" disabled>Скачать CSV</button>
+    </div>
+  </section>
+  <section class="panel">
+    <div class="legend" id="legend"></div>
+    <div class="wrap">
+      <table>
+        <thead id="thead"></thead>
+        <tbody id="tbody"><tr><td class="empty">Пока нет результатов</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const FIELDS = [
+  ["province","Область"],["city","Город"],["district","Район"],["living_area","Жилмассив"],
+  ["street_type","Тип улицы"],["street_name","Улица"],["house","Дом"],["apartment","Кв."],
+  ["entrance","Подъезд"],["floor","Этаж"],["landmark","Ориентир"]
+];
+// сокращения, которыми тип улицы может быть записан в исходной строке
+const ABBR = {
+  "улица":["улица","ул.","ул"], "проспект":["проспект","пр-т","пр.","пр"], "переулок":["переулок","пер.","пер"],
+  "бульвар":["бульвар","бул.","бул"], "микрорайон":["микрорайон","мкр.","мкр"], "площадь":["площадь","пл.","пл"],
+  "шоссе":["шоссе","ш."], "тупик":["тупик"], "набережная":["набережная","наб."]
+};
+let rows = [];
+
+const $ = id => document.getElementById(id);
+const status = (t, err) => { const s=$("status"); s.textContent=t; s.className = err ? "err" : ""; };
+
+// легенда и шапка
+const legend = $("legend");
+FIELDS.forEach(([k,l]) => {
+  const c = document.createElement("span");
+  c.className = "chip"; c.style.background = `var(--c-${k})`; c.textContent = l;
+  legend.appendChild(c);
+});
+(function head(){
+  const tr = document.createElement("tr");
+  ["#","Исходный адрес",...FIELDS.map(f=>f[1]),"Уверенность"].forEach(t=>{
+    const th=document.createElement("th"); th.textContent=t; tr.appendChild(th);
+  });
+  $("thead").appendChild(tr);
+})();
+
+function isWordChar(ch){ return ch !== undefined && /[0-9A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]/.test(ch); }
+
+function findRange(raw, value, used, field){
+  if(value === null || value === undefined) return null;
+  value = String(value).trim();
+  if(!value) return null;
+  let cands = [value];
+  if(field === "street_type") cands = (ABBR[value.toLowerCase()] || []).concat(value);
+  const low = raw.toLowerCase();
+  for(const c of cands){
+    const needle = c.toLowerCase();
+    let from = 0;
+    while(true){
+      const i = low.indexOf(needle, from);
+      if(i < 0) break;
+      const j = i + needle.length;
+      const okL = !isWordChar(raw[i-1]) || !isWordChar(raw[i]);
+      const okR = !isWordChar(raw[j]) || !isWordChar(raw[j-1]);
+      const free = !used.some(([a,b]) => i < b && j > a);
+      if(okL && okR && free) return [i,j];
+      from = i + 1;
+    }
+  }
+  return null;
+}
+
+function renderRaw(td, r){
+  td.textContent = "";
+  const raw = r.raw_address == null ? "" : String(r.raw_address);
+  const used = [], marks = [];
+  // сначала длинные значения, чтобы короткие числа не заняли чужое место
+  FIELDS.map(([k])=>k)
+    .sort((a,b)=>String(r[b]||"").length - String(r[a]||"").length)
+    .forEach(k=>{
+      const rg = findRange(raw, r[k], used, k);
+      if(rg){ used.push(rg); marks.push([rg[0],rg[1],k]); }
+    });
+  marks.sort((a,b)=>a[0]-b[0]);
+  let pos = 0;
+  marks.forEach(([a,b,k])=>{
+    if(a > pos) td.appendChild(document.createTextNode(raw.slice(pos,a)));
+    const m = document.createElement("mark");
+    m.style.background = `var(--c-${k})`; m.title = FIELDS.find(f=>f[0]===k)[1];
+    m.textContent = raw.slice(a,b); td.appendChild(m); pos = b;
+  });
+  if(pos < raw.length) td.appendChild(document.createTextNode(raw.slice(pos)));
+}
+
+function render(){
+  const tb = $("tbody"); tb.textContent = "";
+  if(!rows.length){
+    const tr=document.createElement("tr"), td=document.createElement("td");
+    td.className="empty"; td.textContent="Пока нет результатов"; tr.appendChild(td); tb.appendChild(tr);
+    return;
+  }
+  rows.forEach((r,idx)=>{
+    const tr = document.createElement("tr");
+    const conf = typeof r.confidence === "number" ? r.confidence : 0;
+    if(conf < 0.6) tr.className = "low";
+    const n = document.createElement("td"); n.className="num"; n.textContent = idx+1; tr.appendChild(n);
+    const raw = document.createElement("td"); raw.className="raw"; renderRaw(raw, r); tr.appendChild(raw);
+    FIELDS.forEach(([k])=>{
+      const td = document.createElement("td");
+      td.className = "f"; td.contentEditable = "plaintext-only"; td.tabIndex = 0;
+      td.style.background = r[k] ? `var(--c-${k})` : "";
+      td.textContent = r[k] == null ? "" : r[k];
+      td.addEventListener("input", ()=>{
+        const v = td.textContent.trim();
+        r[k] = v === "" ? null : v;
+        td.style.background = r[k] ? `var(--c-${k})` : "";
+        renderRaw(raw, r);
+      });
+      td.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); td.blur(); } });
+      tr.appendChild(td);
+    });
+    const c = document.createElement("td"); c.className = "conf" + (conf<0.6 ? " low" : "");
+    c.textContent = conf.toFixed(2); tr.appendChild(c);
+    tb.appendChild(tr);
+  });
+  $("dlJson").disabled = $("dlCsv").disabled = false;
+}
+
+function buildPayload(text){
+  const t = text.trim();
+  if(!t) return null;
+  if(t[0] === "[" || t[0] === "{"){
+    try { return JSON.parse(t); } catch(e) { throw new Error("Не удалось прочитать JSON: " + e.message); }
+  }
+  return t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).map((s,i)=>({id:i+1, raw_address:s}));
+}
+
+async function run(){
+  let payload;
+  try { payload = buildPayload($("input").value); } catch(e){ status(e.message, true); return; }
+  if(!payload){ status("Введите хотя бы один адрес", true); return; }
+  $("run").disabled = true; status("Разбираю…");
+  try{
+    const resp = await fetch("/parse/batch", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)
+    });
+    if(!resp.ok) throw new Error("Сервер ответил " + resp.status);
+    const data = await resp.json();
+    rows = Array.isArray(data) ? data : (data.results || data.records || []);
+    status("Готово: " + rows.length + " адресов");
+    render();
+  }catch(e){
+    status("Ошибка: " + e.message + ". Проверьте, что сервер запущен.", true);
+  }finally{ $("run").disabled = false; }
+}
+
+function download(name, mime, text){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], {type:mime}));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+$("run").addEventListener("click", run);
+$("file").addEventListener("change", e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = ()=>{ $("input").value = rd.result; status("Файл загружен: " + f.name); };
+  rd.readAsText(f);
+});
+$("dlJson").addEventListener("click", ()=> download("result.json","application/json", JSON.stringify(rows,null,2)));
+$("dlCsv").addEventListener("click", ()=>{
+  const cols = ["id","raw_address",...FIELDS.map(f=>f[0]),"confidence"];
+  const esc = v => { v = v == null ? "" : String(v); return /[",;\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v; };
+  const csv = [cols.join(",")].concat(rows.map(r=>cols.map(c=>esc(r[c])).join(","))).join("\n");
+  download("result.csv","text/csv;charset=utf-8", "\ufeff" + csv);
+});
+</script>
+</body>
+</html>
