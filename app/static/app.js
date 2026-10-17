@@ -1,7 +1,7 @@
-// Состояние интерфейса отделено от оригинального ответа API.
 const create=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
 const examples=['66квартал 12дом 69квартира','Ул .Курильская 9 кв 1','Туран 55/6 магазин береке 4подьезд 9этаж','Нурсити 2 микрорайон 11дом 5 подьезд 239 кв','город Алматы/Алматы қаласы, Мкр Аксай 3а, 59, кв 70'];
 let original=[],reviewed=new Set(),disabledFields=new Set(),page=0,tokenIndex=0,queueIndex=0,activeTab='parse',threshold=.6,queueCurrentRow=null;
+let mapApiKey=null,mapInstance=null,mapMarker=null,mapScriptPromise=null,mapRequest=0;
 const confidence=r=>typeof r.confidence==='number'&&Number.isFinite(r.confidence)?r.confidence:0;
 const clone=x=>JSON.parse(JSON.stringify(x));
 function save(key,value){try{localStorage.setItem(key,value);}catch{}}
@@ -26,13 +26,11 @@ function tab(name){
   if(name==='tokens')renderTokens();if(name==='queue')renderQueue();if(name==='errors')renderErrors();
 }
 document.querySelectorAll('[data-tab]').forEach(e=>{e.onclick=()=>tab(e.dataset.tab);e.onkeydown=event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-tab]')];const next=tabs[(tabs.indexOf(e)+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];next.focus();tab(next.dataset.tab);};});
-// Карта позиций игнорирует невидимые символы, сохраняя raw_address побайтно в запросе.
 function searchable(raw){
   let text='',map=[],previous='';
   for(let i=0;i<raw.length;i++){
     const current=raw[i];
     if(/[\u200b-\u200f\u2060\ufeff\u00ad]/.test(current))continue;
-    // Виртуальный пробел связывает «Коктал1» с «Коктал 1», не меняя raw_address.
     if(previous&&((/\p{L}/u.test(previous)&&/\d/.test(current))||(/\d/.test(previous)&&/\p{L}/u.test(current)))){text+=' ';map.push(i);}
     text+=current.toLowerCase();map.push(i);previous=current;
   }
@@ -40,7 +38,6 @@ function searchable(raw){
 }
 const word=c=>!!c&&/[\p{L}\p{N}_]/u.test(c),digit=c=>!!c&&/\d/.test(c);
 function findRange(raw,value,used,field){if(value==null||String(value)==='')return null;const {text,map}=searchable(raw);const candidates=field==='street_type'?(ABBR[String(value).toLowerCase()]||[String(value)]):[String(value)];for(const candidate of candidates){const needle=searchable(candidate).text;let from=0;while(needle&&from<text.length){const i=text.indexOf(needle,from);if(i<0)break;const j=i+needle.length,left=!word(text[i-1])||digit(text[i-1])!==digit(text[i]),right=!word(text[j])||digit(text[j-1])!==digit(text[j]);const a=map[i],b=map[j-1]+1;if(left&&right&&!used.some(([x,y])=>a<y&&b>x))return [a,b];from=i+1;}}return null;}
-// Подсвечиваем число вместе с маркером поля, включая слитное написание.
 function ranges(row){
   const raw=String(row.raw_address??''),used=[],marks=[];
   const markers={living_area:'ж\\s*[./]?\\s*м[.]?|жилмассив|жилой\\s+массив|тұрғын\\s+алап',house:'дом|дм|д|үй|үйі|уй|bld|house',apartment:'квартира|кварт|кв|flat|kv|апт|пәтер|пәтері|apt|appt',entrance:'подъезд|подьезд|подьедз|подъедз|подезд|подъ|под|кіреберіс|кіреберісі|entrance',floor:'этаж|эт|floor|қабат|қабаты',postal_code:'индекс|индексі|postal code|zip',building:'корпус|корп|к|блок|block|корпусы',structure:'строение|стр|құрылыс|құрылысы'};
@@ -92,9 +89,8 @@ function queueItems(){return rows.map((r,i)=>i).filter(i=>($('queueAll').checked
 function renderQueue(){const items=queueItems(),pending=items.filter(i=>!reviewed.has(i));queueIndex=Math.max(0,Math.min(queueIndex,pending.length-1));const count=items.filter(i=>reviewed.has(i)).length;$('progressText').textContent=translateText(`Проверено ${count} из ${items.length}`);$('progress').max=items.length||1;$('progress').value=count;queueCurrentRow=pending[queueIndex]??null;renderDetail($('queueDetail'),queueCurrentRow??undefined,true);['confirm','fixConfirm','skip','queueBack'].forEach(id=>$(id).disabled=!pending.length);}
 function confirm(){if(queueCurrentRow!==null&&rows[queueCurrentRow])reviewed.add(queueCurrentRow);refresh();}
 function refresh(){updateStats();renderTable();if(activeTab==='tokens')renderTokens();if(activeTab==='queue')renderQueue();}
-// API: raw_address и id передаются без очистки и нормализации.
 function buildPayload(text){if(!text.trim())throw Error(translateText('Введите хотя бы один адрес'));if(/^[\s]*[\[{]/.test(text)){let data;try{data=JSON.parse(text);}catch{throw Error(translateText('Не удалось прочитать файл. Проверьте формат.'));}const list=Array.isArray(data)?data:(data.records||data.data||data.items||data.addresses||(Object.hasOwn(data,'raw_address')?[data]:null));if(!Array.isArray(list))throw Error(translateText('Не удалось прочитать файл. Проверьте формат.'));return list.map((item,i)=>{if(typeof item==='string')return {id:i+1,raw_address:item};if(!item||typeof item!=='object'||typeof item.raw_address!=='string')throw Error(translateText(`Запись ${i+1}: проверьте адрес.`));return {id:item.id,raw_address:item.raw_address};});}return text.split(/\r?\n/).filter(s=>s.trim()!=='').map((raw_address,i)=>({id:i+1,raw_address}));}
-async function run(){let payload;try{payload=buildPayload($('input').value);if(!payload.length)throw Error(translateText('Список адресов пуст.'));}catch(e){status(e.message,true);return;}$('run').disabled=true;$('clear').disabled=true;$('run').classList.add('busy');$('parse').setAttribute('aria-busy','true');$('retry').hidden=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),120000),start=performance.now();status(translateText(`Разбираем ${payload.length} адресов…${payload.length>1000?' Большой набор может занять больше времени.':''}`));try{const resp=await fetch('/parse/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});if(!resp.ok)throw Error(translateText('Сервис временно недоступен. Попробуйте позже.'));const data=await resp.json(),result=Array.isArray(data)?data:(data.results||data.records);if(!Array.isArray(result)||result.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw Error(translateText('Не удалось обработать адреса. Попробуйте ещё раз.'));rows=result;original=clone(rows);reviewed.clear();page=tokenIndex=queueIndex=0;refresh();status(translateText(`Готово: ${rows.length} адресов · ${((performance.now()-start)/1000).toFixed(2)} с · Нужна проверка: ${rows.filter(r=>confidence(r)<threshold).length}`));}catch(e){status(e.name==='AbortError'?translateText('Обработка заняла слишком много времени. Попробуйте меньший список.'):translateText('Сервис временно недоступен. Попробуйте позже.'),true);$('retry').hidden=false;}finally{clearTimeout(timeout);$('run').disabled=false;$('clear').disabled=false;$('run').classList.remove('busy');$('parse').removeAttribute('aria-busy');}}
+async function run(){let payload;try{payload=buildPayload($('input').value);if(!payload.length)throw Error(translateText('Список адресов пуст.'));}catch(e){status(e.message,true);return;}$('run').disabled=true;$('clear').disabled=true;$('run').classList.add('busy');$('parse').setAttribute('aria-busy','true');$('retry').hidden=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),120000),start=performance.now();status(translateText(`Разбираем ${payload.length} адресов…${payload.length>1000?' Большой набор может занять больше времени.':''}`));try{const resp=await fetch('/parse/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});if(!resp.ok)throw Error(translateText('Сервис временно недоступен. Попробуйте позже.'));const data=await resp.json(),result=Array.isArray(data)?data:(data.results||data.records);if(!Array.isArray(result)||result.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw Error(translateText('Не удалось обработать адреса. Попробуйте ещё раз.'));rows=result;original=clone(rows);renderMapAddresses();reviewed.clear();page=tokenIndex=queueIndex=0;refresh();status(translateText(`Готово: ${rows.length} адресов · ${((performance.now()-start)/1000).toFixed(2)} с · Нужна проверка: ${rows.filter(r=>confidence(r)<threshold).length}`));}catch(e){status(e.name==='AbortError'?translateText('Обработка заняла слишком много времени. Попробуйте меньший список.'):translateText('Сервис временно недоступен. Попробуйте позже.'),true);$('retry').hidden=false;}finally{clearTimeout(timeout);$('run').disabled=false;$('clear').disabled=false;$('run').classList.remove('busy');$('parse').removeAttribute('aria-busy');}}
 async function readFile(file){if(!file)return;if(!/\.(txt|json)$/i.test(file.name)){status(translateText('Выберите файл .json или .txt'),true);return;}try{$('input').value=await file.text();status(translateText(`Загружен ${file.name}${file.size>5*1024*1024?' · Большой файл: обработка может занять время.':''}`));}catch{status(translateText('Не удалось прочитать файл.'),true);}}
 function exportRows(){return rows.map((r,i)=>$('exportReviewed').checked?{...r,reviewed:reviewed.has(i)}:{...r});}
 function download(name,mime,text){const url=URL.createObjectURL(new Blob([text],{type:mime})),a=create('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -103,3 +99,38 @@ $('run').onclick=$('retry').onclick=run;$('example').onclick=()=>{$('input').val
 $('dlJson').onclick=()=>download('jana-address.json','application/json',JSON.stringify(exportRows(),null,2));$('dlCsv').onclick=()=>download('jana-address.csv','text/csv;charset=utf-8',csvText(exportRows()));$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(exportRows(),null,2));status(translateText('Скопировано.'));}catch{status(translateText('Не удалось скопировать. Скачайте файл.'),true);}};
 $('undo').onclick=()=>{rows=clone(original);reviewed.clear();refresh();};['search','sort','onlylow'].forEach(id=>$(id).addEventListener('input',()=>{page=0;renderTable();}));$('threshold').oninput=()=>{threshold=+$('threshold').value;save('jana-threshold',threshold);queueIndex=0;refresh();};$('prev').onclick=()=>{page--;renderTable();};$('next').onclick=()=>{page++;renderTable();};$('tokenPrev').onclick=()=>{tokenIndex--;renderTokens();};$('tokenNext').onclick=()=>{tokenIndex++;renderTokens();};$('recordSelect').onchange=()=>{tokenIndex=+$('recordSelect').value;renderTokens();};$('queueAll').onchange=()=>{queueIndex=0;renderQueue();};$('confirm').onclick=$('fixConfirm').onclick=confirm;$('fixConfirm').title=translateText('Измените поля и подтвердите');$('skip').onclick=()=>{const length=queueItems().filter(i=>!reviewed.has(i)).length;queueIndex=(queueIndex+1)%Math.max(1,length);renderQueue();};$('queueBack').onclick=()=>{queueIndex=Math.max(0,queueIndex-1);renderQueue();};document.addEventListener('keydown',e=>{if(activeTab!=='queue'||e.target.closest('input,textarea,select,button,[contenteditable]'))return;if(['Enter','ArrowRight','ArrowLeft'].includes(e.key)){e.preventDefault();if(e.key==='Enter')confirm();else $(e.key==='ArrowRight'?'skip':'queueBack').click();}});
 renderLegends();refresh();
+
+async function setupAddressMap(){
+  try{const response=await fetch('/map/config');const config=await response.json();if(!response.ok||!config.enabled)return;mapApiKey=config.key;$('mapPanel').hidden=false;}
+  catch{$('mapPanel').hidden=true;}
+}
+function renderMapAddresses(){
+  const select=$('mapAddress');if(!select)return;const previous=select.value;select.textContent='';
+  rows.forEach((row,index)=>select.append(create('option',`${index+1}. ${String(row.raw_address??'').slice(0,100)}`)));
+  select.value=previous&&Number(previous)<rows.length?previous:(rows.length?'0':'');
+  $('mapPanel').hidden=!mapApiKey||!rows.length;$('mapConsent').checked=false;$('showMap').disabled=true;
+  mapRequest++;$('mapStatus').textContent='';if(mapMarker){mapMarker.destroy();mapMarker=null;}
+}
+$('mapConsent').onchange=()=>{$('showMap').disabled=!$('mapConsent').checked;};
+$('mapAddress').onchange=()=>{mapRequest++;$('mapConsent').checked=false;if(mapMarker){mapMarker.destroy();mapMarker=null;}$('mapStatus').textContent='';$('showMap').disabled=true;};
+async function loadMapGL(){
+  if(mapScriptPromise)return mapScriptPromise;
+  mapScriptPromise=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://mapgl.2gis.com/api/js/v1';script.onload=resolve;script.onerror=()=>{mapScriptPromise=null;reject(Error('MapGL failed to load'));};document.head.append(script);});
+  return mapScriptPromise;
+}
+$('showMap').onclick=async()=>{
+  const row=rows[Number($('mapAddress').value)];if(!row||!$('mapConsent').checked)return;
+  const request=++mapRequest,selected=$('mapAddress').value;
+  $('showMap').disabled=true;$('mapStatus').textContent=translateText('Ищем координаты адреса в 2GIS…');
+  try{
+    const response=await fetch('/map/geocode?q='+encodeURIComponent(row.raw_address||''));if(request!==mapRequest||selected!==$('mapAddress').value)return;if(!response.ok)throw Error('Geocoder failed');const result=await response.json();
+    if(!result.found){$('mapStatus').textContent=translateText('2GIS не нашёл улицу в выбранном городе. Проверьте город, улицу и номер дома.');return;}
+    await loadMapGL();if(request!==mapRequest||selected!==$('mapAddress').value)return;const coords=result.coordinates;
+    const zoom=result.precision==='house'?17:14;
+    if(!mapInstance)mapInstance=new mapgl.Map('addressMap',{center:coords,zoom,key:mapApiKey});else{mapInstance.setCenter(coords);mapInstance.setZoom(zoom);}
+    if(mapMarker)mapMarker.destroy();mapMarker=new mapgl.Marker(mapInstance,{coordinates:coords});
+    $('mapStatus').textContent=result.precision==='street'?`${result.name||row.raw_address} — ${translateText('номер дома в 2GIS не найден; показано примерное положение улицы')}`:(result.name||row.raw_address||'');
+  }catch{if(request===mapRequest)$('mapStatus').textContent=translateText('Не удалось загрузить карту или найти адрес. Проверьте подключение и ключ 2GIS.');}
+  finally{if(request===mapRequest)$('showMap').disabled=!$('mapConsent').checked;}
+};
+setupAddressMap();

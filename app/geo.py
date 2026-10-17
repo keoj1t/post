@@ -122,8 +122,6 @@ def resolve_geo(segments):
         if prov_id:
             narrowed = [i for i in ids if top_of(i) == prov_id]
             ids = narrowed or ids
-        # Одноимённые сёла и участки не должны делать город «неоднозначным»:
-        # если среди совпадений есть настоящие города, берём только их.
         city_ids = [i for i in ids if re.search(r"г\.а\.|^г\.|город|қаласы", ROWS[i][1], re.I)]
         village = any(re.search(r"\bсело\b|(?<!\w)с\.|посел|посёл|пос\.|ауылы", pick_ru(sg), re.I)
                       for sg in segments if norm(strip_markers(pick_ru(sg))) == norm(city_text))
@@ -133,8 +131,6 @@ def resolve_geo(segments):
         if len(tops) > 1:
             ambiguous = True
         if ids:
-            # Район берём только из общей родительской цепочки всех совпадений.
-            # Районы внутри большого города по одному имени города не определяются.
             district_ids = set()
             for item in ids:
                 district = None

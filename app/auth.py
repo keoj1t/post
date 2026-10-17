@@ -47,7 +47,6 @@ class Registration(Credentials):
 
 
 def check_origin(request):
-    # SameSite cookie + проверка Origin запрещают межсайтовые изменения сессии.
     origin = request.headers.get('origin')
     expected = f'{request.url.scheme}://{request.url.netloc}'
     if origin and origin.rstrip('/') != expected:

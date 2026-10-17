@@ -1,4 +1,3 @@
-﻿// Проверки помогают оператору, но не подменяют исходные поля.
 function fieldLabel(row,key){
   if(key==='city'&&row.review?.locality_kind==='village')return translateText('Населённый пункт');
   if(key==='street_name'&&row.street_type==='квартал')return translateText('Квартал');

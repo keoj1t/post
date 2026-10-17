@@ -2,15 +2,13 @@ import os
 import re
 import sqlite3
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 
-# Грубые рамки городов (юг, запад, север, восток). С запасом на пригороды.
-# Названия должны совпадать с тем, как город называется в КАТО (без слова «город»).
 CITIES = {
     "Алматы":  (43.00, 76.70, 43.50, 77.25),
     "Астана":  (50.90, 71.10, 51.40, 71.85),
     "Шымкент": (42.20, 69.40, 42.50, 69.85),
-    "Актобе":  (50.18, 57.05, 50.40, 57.40),
+    "Актобе": (50.18, 57.05, 50.40, 57.40),
     "Караганда": (49.70, 72.95, 49.92, 73.25),
     "Атырау":  (47.03, 51.80, 47.20, 52.05),
     "Актау":   (43.55, 51.05, 43.75, 51.30),
@@ -46,6 +44,15 @@ TYPE_WORDS = [
     ("квартал", r"квартал|кв-л"),
 ]
 
+DISTRICT_FIX = {"Әулиеата": "Аулиеата", "Жібек жолы": "Жибек Жолы"}
+DISTRICT_RE = re.compile(
+    r"(?:район|р-н|районы|аудан(?:ы|ы)?|district|район города|қалалық аудан)", re.I
+)
+
+NEAR = 0.0012
+DEFAULT_MARGIN = 0.10
+RELAXED_MARGIN = {"Караганда": 0.5, "Актобе": 0.5}
+
 
 def norm(t):
     t = t.lower().replace("ё", "е")
@@ -54,7 +61,6 @@ def norm(t):
 
 
 def split_type(name):
-    """'улица Абая' / 'Абая улица' -> ('улица', 'абая'). Тип не нашли -> (None, name)."""
     n = norm(name)
     for stype, words in TYPE_WORDS:
         m = re.match(rf"^(?:{words})\s+(.+)$", n) or re.match(rf"^(.+?)\s+(?:{words})$", n)
@@ -71,12 +77,28 @@ def city_of(lat, lon):
 
 
 def clean_district(name):
-    n = re.sub(r"\b(район|р-н|ауданы)\b", " ", name, flags=re.I)
-    return re.sub(r"\s+", " ", n).strip(" .,-")
+    n = DISTRICT_RE.sub(" ", name)
+    n = re.sub(r"\s+", " ", n).strip(" .,-")
+    return DISTRICT_FIX.get(n, n)
 
 
 def ru_name(tags):
     return tags.get("name:ru") or tags.get("name")
+
+
+def sample_points(nodes):
+    total = len(nodes)
+    if total == 0:
+        return []
+    idxs = sorted({0, total // 4, total // 2, (3 * total) // 4, total - 1})
+    pts = []
+    for i in idxs:
+        try:
+            nd = nodes[i]
+            pts.append((nd.lat, nd.lon))
+        except Exception:
+            continue
+    return pts
 
 
 def main(pbf, out):
@@ -85,9 +107,10 @@ def main(pbf, out):
     from shapely.geometry import Point
     from shapely.prepared import prep
 
-    streets = []      # (city, lat, lon, type, name_norm)
-    places = []       # (city, lat, lon, name)
-    districts = []    # (city, name, prepared polygon)
+    streets = []
+    places = []
+    districts = []
+    rejected = []
     wkbf = osmium.geom.WKBFactory()
 
     fp = (osmium.FileProcessor(pbf)
@@ -103,16 +126,15 @@ def main(pbf, out):
             nm = ru_name(tags)
             if not nm:
                 continue
-            try:
-                node = o.nodes[len(o.nodes) // 2]
-                lat, lon = node.lat, node.lon
-            except Exception:
+            pts = sample_points(o.nodes)
+            if not pts:
                 continue
-            city = city_of(lat, lon)
-            if city:
-                stype, nn = split_type(nm)
-                if nn:
-                    streets.append((city, lat, lon, stype, nn))
+            city = city_of(*pts[len(pts) // 2])
+            if not city:
+                continue
+            stype, nn = split_type(nm)
+            if nn:
+                streets.append((city, stype, nn, pts))
         elif o.is_node() and tags.get("place") in ("suburb", "neighbourhood", "quarter"):
             nm = ru_name(tags)
             if nm:
@@ -121,7 +143,7 @@ def main(pbf, out):
                     places.append((city, o.location.lat, o.location.lon, nm))
         elif o.is_area() and tags.get("boundary") == "administrative":
             nm = ru_name(tags) or ""
-            if not re.search(r"район|р-н|ауданы", nm, re.I):
+            if not DISTRICT_RE.search(nm):
                 continue
             try:
                 poly = wkb.loads(wkbf.create_multipolygon(o), hex=True)
@@ -129,32 +151,47 @@ def main(pbf, out):
             except Exception:
                 continue
             city = city_of(rp.y, rp.x)
-            if city:
-                s_, w_, n_, e_ = CITIES[city]
-                minx, miny, maxx, maxy = poly.bounds
-                m = 0.10   # районы города лежат внутри рамки, сельские районы выходят далеко за неё
-                if miny < s_ - m or minx < w_ - m or maxy > n_ + m or maxx > e_ + m:
-                    continue
-                districts.append((city, clean_district(nm), prep(poly)))
+            if not city:
+                continue
+            s_, w_, n_, e_ = CITIES[city]
+            minx, miny, maxx, maxy = poly.bounds
+            m = RELAXED_MARGIN.get(city, DEFAULT_MARGIN)
+            if miny < s_ - m or minx < w_ - m or maxy > n_ + m or maxx > e_ + m:
+                rejected.append((city, nm, tags.get("admin_level", "?"),
+                                 round(miny, 3), round(minx, 3), round(maxy, 3), round(maxx, 3)))
+                continue
+            districts.append((city, clean_district(nm), prep(poly), poly))
 
     print(f"Улиц (участков): {len(streets):,}; мест: {len(places):,}; районов: {len(districts)}")
     by_city = Counter(c for c, *_ in districts)
     print("Районов по городам:", dict(by_city))
     print("Улиц по городам:", dict(Counter(c for c, *_ in streets)))
     print("Города без районов:", [c for c in CITIES if c not in by_city])
+    if rejected:
+        print("\nОТКЛОНЁННЫЕ районы (город | название | admin_level | юг запад север восток):")
+        for r in rejected[:60]:
+            print("  ", r)
+        print("Если среди них есть настоящие районы города, пришли этот список целиком.")
     if not districts:
         print("ВНИМАНИЕ: районы не найдены. Пришлите мне этот вывод целиком.")
 
     def district_at(city, lat, lon):
         p = Point(lon, lat)
-        for c, name, poly in districts:
-            if c == city and poly.contains(p):
+        own = [(name, pp, poly) for c, name, pp, poly in districts if c == city]
+        for name, pp, poly in own:
+            if pp.contains(p):
                 return name
-        return None
+        best, best_d = None, NEAR
+        for name, pp, poly in own:
+            d = poly.distance(p)
+            if d < best_d:
+                best, best_d = name, d
+        return best
 
     agg = Counter()
-    for city, lat, lon, stype, nn in streets:
-        agg[(city, nn, stype, district_at(city, lat, lon))] += 1
+    for city, stype, nn, pts in streets:
+        for lat, lon in pts:
+            agg[(city, nn, stype, district_at(city, lat, lon))] += 1
 
     if os.path.exists(out):
         os.remove(out)
@@ -167,6 +204,13 @@ def main(pbf, out):
     db.executemany("INSERT INTO place VALUES (?,?,?)",
                    [(c, norm(nm), district_at(c, la, lo)) for c, la, lo, nm in places])
     db.commit()
+
+    print("\nДоля точек улиц с районом по городам с районами:")
+    for city in by_city:
+        total, with_d = db.execute(
+            "SELECT SUM(n), SUM(CASE WHEN district IS NOT NULL THEN n ELSE 0 END) FROM street WHERE city=?",
+            (city,)).fetchone()
+        print(f"  {city}: {with_d}/{total} = {round(100 * with_d / total)}%")
     db.close()
     print("Готово:", out)
 
@@ -174,5 +218,5 @@ def main(pbf, out):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit("Использование: python scripts/build_osm.py путь/к/kazakhstan-latest.osm.pbf")
-    out = os.path.join(os.path.dirname(__file__), "..", "reference", "osm_streets.sqlite")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "osm_streets.sqlite")
     main(sys.argv[1], out)
