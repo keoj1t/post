@@ -19,7 +19,7 @@ def index():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 FIELDS = [
     "province", "city", "district", "living_area", "street_type",
-    "street_name", "house", "apartment", "entrance", "floor", "landmark",
+    "street_name", "house", "apartment", "entrance", "floor", "landmark", "postal_code", "building", "structure",
 ]
 LIST_KEYS = ("records", "data", "items", "addresses")
 
@@ -60,6 +60,7 @@ def parse_one(item: Any) -> dict:
         for f in FIELDS:
             out[f] = parsed.get(f)
         out["confidence"] = parsed.get("confidence", 0.0)
+        out['review'] = parsed.get('review', {'needs_review': True, 'issues': []})
     except Exception:
         log.exception("parse failed for id=%s", rec.get("id"))
     return out

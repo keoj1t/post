@@ -1,0 +1,149 @@
+{
+  "notice": "Synthetic website samples are not verified real addresses. Used to test extraction and contradiction handling, not delivery validity.",
+  "samples": [
+    {
+      "source": "https://www.bestrandoms.com/ru/random-address-in-kz",
+      "raw_address": "Akademika Satpaeva, bld. 42\nPavlodar\nPavlodarskaya oblast\nKazakhstan"
+    },
+    {
+      "source": "https://www.bestrandoms.com/ru/random-address-in-kz",
+      "raw_address": "Ul.saina, bld. 2, appt. 18\nAlmaty/alma-ata\nAlmatinskaya oblast\nKazakhstan"
+    },
+    {
+      "source": "https://www.bestrandoms.com/ru/random-address-in-kz",
+      "raw_address": "Kataeva, bld. 95, appt. 5\nPavlodar\nPavlodarskaya oblast\nKazakhstan"
+    },
+    {
+      "source": "https://www.bestrandoms.com/ru/random-address-in-kz",
+      "raw_address": "Kamzina, bld. 82/1, appt. 45\nPavlodar\nPavlodarskaya oblast\nKazakhstan"
+    },
+    {
+      "source": "https://generatefakename.com/address/kk/kz",
+      "raw_address": "015937, Ақтөбе облысы, Ақтау қаласы, Бұқар жырау даңғылы, 776"
+    },
+    {
+      "source": "https://generatefakename.com/fr/address/kk/kz",
+      "raw_address": "062668, Орал облысы, Ақтөбе қаласы, Абай көшесі, 110"
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "081973, Шымкент облысы, Ақтөбе қаласы, Бейбітшілік көшесі, 008",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "025111, Ақтау облысы, Ақтөбе қаласы, Гоголь көшесі, 489",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "081625, Қарағанды облысы, Петропавл қаласы, Абай көшесі, 580",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "046285, Байқоңыр облысы, Байқоңыр қаласы, Гоголь көшесі, 901",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "008262, Шымкент облысы, Қызылорда қаласы, Гоголь көшесі, 649",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "098454, Қызылорда облысы, Ақтөбе қаласы, Бейбітшілік көшесі, 448",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "060027, Атырау облысы, Шымкент қаласы, Гоголь көшесі, 037",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "069765, Астана облысы, Шымкент қаласы, Бұқар жырау даңғылы, 200",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "072958, Петропавл облысы, Ақтау қаласы, Бейбітшілік көшесі, 004",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "080369, Астана облысы, Атырау қаласы, Достық даңғылы, 217",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "055911, Шымкент облысы, Көкшетау қаласы, Кенесары даңғылы, 900",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "007154, Байқоңыр облысы, Тараз қаласы, Абай даңғылы, 396",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "010334, Петропавл облысы, Павлодар қаласы, Достық көшесі, 308",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "075319, Байқоңыр облысы, Орал қаласы, Кенесары көшесі, 463",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "090535, Маңғыстау облысы, Ақтөбе қаласы, Абай көшесі, 404",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "005605, Алматы облысы, Атырау қаласы, Кенесары көшесі, 771",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "007138, Петропавл облысы, Өскемен қаласы, Бұқар жырау даңғылы, 135",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "050970, Ақтөбе облысы, Астана қаласы, Бұқар жырау көшесі, 391",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "035233, Петропавл облысы, Павлодар қаласы, Бейбітшілік даңғылы, 636",
+      "generated_locale": "kk",
+      "synthetic": true
+    },
+    {
+      "source": "https://generatefakename.com/ru/address/kk/kz?count=20",
+      "raw_address": "089996, Ақтөбе облысы, Қарағанды қаласы, Бейбітшілік даңғылы, 782",
+      "generated_locale": "kk",
+      "synthetic": true
+    }
+  ]
+}

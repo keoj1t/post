@@ -1,6 +1,7 @@
 import csv
 import os
 import re
+from app.normalization import CITY_ALIASES, PROVINCE_ALIASES
 
 PATH = os.path.join(os.path.dirname(__file__), "..", "reference", "kato_ru.csv")
 
@@ -8,7 +9,7 @@ KZ_LETTERS = re.compile(r"[әіңғүұқөһӘІҢҒҮҰҚӨҺ]")
 DOTTED = re.compile(
     r"(?<!\w)(?:г\.а\.|г\.|гор\.|с\.о\.|с\.|п\.|пос\.|а\.о\.|а\.|ст\.|обл\.)\s*", re.I)
 WORDS = re.compile(
-    r"\b(?:город|область|район|поселок|посёлок|село|р-н|қаласы|облысы|ауданы)\b", re.I)
+    r"\b(?:город|область|район|поселок|посёлок|село|р-н|қаласы|қала|облысы|облыс|ауданы|аудан|ауыл|ауылы|кент)\b", re.I)
 
 
 def strip_markers(t: str) -> str:
@@ -20,7 +21,8 @@ def strip_markers(t: str) -> str:
 def norm(t: str) -> str:
     t = t.lower().replace("ё", "е")
     t = re.sub(r"[^\w\s-]", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    return CITY_ALIASES.get(t, t)
 
 
 def pick_ru(seg: str) -> str:
@@ -68,6 +70,11 @@ for i, (parent, name) in ROWS.items():
         DIST.setdefault(key, []).append(i)
     else:
         LOC.setdefault(key, []).append(i)
+
+
+for _alias, _canonical in PROVINCE_ALIASES.items():
+    if norm(_canonical) in PROV and norm(_alias) not in PROV:
+        PROV[norm(_alias)] = PROV[norm(_canonical)]
 
 
 def prov_display(i):
@@ -126,6 +133,20 @@ def resolve_geo(segments):
         if len(tops) > 1:
             ambiguous = True
         if ids:
+            # Район берём только из общей родительской цепочки всех совпадений.
+            # Районы внутри большого города по одному имени города не определяются.
+            district_ids = set()
+            for item in ids:
+                district = None
+                parent = ROWS[item][0]
+                while parent in ROWS:
+                    if re.search(r'район|р\.а\.|ауданы', ROWS[parent][1], re.I):
+                        district = parent
+                        break
+                    parent = ROWS[parent][0]
+                district_ids.add(district)
+            if not out['district'] and len(district_ids) == 1 and None not in district_ids:
+                out['district'] = strip_markers(ROWS[next(iter(district_ids))][1])
             best = min(ids, key=depth_of)
             if depth_of(best) == 0:                  
                 prov_id = best

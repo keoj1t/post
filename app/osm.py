@@ -10,6 +10,11 @@ TYPE_RE = r"улица|ул|проспект|пр-т|просп|пр|переу�
 
 _db = None
 _cities = {}   # 'усть-каменогорск' -> 'Усть-Каменогорск' (названия берём из самой базы)
+_compact_streets = {}
+
+
+def _compact_name(value):
+    return re.sub(r'[\W_]+', '', _norm(value).translate(str.maketrans('әіңғүұқөһ', 'аингуукох')))
 
 
 def _conn():
@@ -55,6 +60,22 @@ def lookup(city, street_name, street_type=None):
     out = {"district": None, "street_type": None}
     rows = db.execute("SELECT type, district, n FROM street WHERE city=? AND name=?",
                       (c, _norm(street_name))).fetchall()
+    if not rows:
+        if c not in _compact_streets:
+            names = {}
+            for (name,) in db.execute('SELECT DISTINCT name FROM street WHERE city=?', (c,)):
+                names.setdefault(_compact_name(name), set()).add(name)
+            _compact_streets[c] = names
+        matches = _compact_streets[c].get(_compact_name(street_name), set())
+        if not matches and street_type not in ('микрорайон', 'квартал'):
+            base = re.sub(r'\s+\d+[а-яa-z]?$', '', street_name, flags=re.I)
+            if base != street_name:
+                matches = _compact_streets[c].get(_compact_name(base), set())
+        if len(matches) == 1:
+            name = next(iter(matches))
+            rows = db.execute('SELECT type, district, n FROM street WHERE city=? AND name=?', (c, name)).fetchall()
+            if re.sub(r'\s+', ' ', _norm(street_name).translate(str.maketrans('әіңғүұқөһ', 'аингуукох'))) != name:
+                out['street_name'] = name
     for idx, key in ((1, "district"), (0, "street_type")):
         tot = {}
         for r in rows:

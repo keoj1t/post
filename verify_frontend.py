@@ -1,6 +1,8 @@
-﻿"""End-to-end checks use a temporary account database and their own server."""
+"""End-to-end checks use a temporary account database and their own server."""
 from pathlib import Path
 import json
+import csv as csvlib
+import io
 import os
 import sqlite3
 import subprocess
@@ -159,7 +161,7 @@ with tempfile.TemporaryDirectory(prefix='jana-check-') as temp:
             page.wait_for_function("rows.length===1 && rows[0].floor==='4' && rows[0].city==='астана'")
             assert page.locator('#uncertain').inner_text()=='1'
             page.click('[data-tab=tokens]')
-            assert 'не согласованы' in page.locator('#tokenDetail .record-checks').inner_text()
+            assert 'Город и область' in page.locator('#tokenDetail .record-checks').inner_text()
             page.click('[data-tab=queue]');page.uncheck('#queueAll')
             assert page.locator('#queueDetail input[data-field=entrance]').input_value()=='5'
             assert page.locator('#queueDetail input[data-field=floor]').input_value()=='4'
@@ -173,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix='jana-check-') as temp:
             assert queue_export[0]['floor']=='7' and queue_export[0]['reviewed'] is True
             assert queue_export[0]['raw_address']==full_example
             page.click('[data-tab=errors]')
-            assert page.locator('#errorsBody tr').count()==5
+            assert page.locator('#errorsBody tr').count()==len(json.loads((ROOT/'app/static/errors-log.json').read_text(encoding='utf-8-sig')))
             assert page.locator('#title').inner_text()=='Ошибки и исправления'
             page.fill('#errorSearch','Коктал1')
             assert page.locator('#errorsBody tr').count()==1
@@ -186,6 +188,42 @@ with tempfile.TemporaryDirectory(prefix='jana-check-') as temp:
             assert 'Үтірсіз география' in page.locator('#errorsBody').inner_text()
             assert 'География без запятых' not in page.locator('#errorsBody').inner_text()
             page.select_option('#language','ru')
+            # Postal extraction/export and reasons/candidate selection in review queue.
+            page.click('[data-tab=parse]')
+            page.fill('#input','010000, Астана қаласы, Абай көшесі, үй12 пәтер3')
+            page.click('#run')
+            page.wait_for_function("rows.length===1 && rows[0].postal_code==='010000'")
+            assert page.locator('#tbody tr').first.locator('td.f').nth(11).inner_text()=='010000'
+            with page.expect_download() as pending:
+                page.click('#dlCsv')
+            exported=list(csvlib.DictReader(io.StringIO(Path(pending.value.path()).read_text(encoding='utf-8-sig'))))
+            assert exported[0]['postal_code']=='010000'
+            assert json.loads(exported[0]['review'])['issues'][0]['code']=='postal_unverified'
+            page.click('[data-tab=tokens]')
+            page.locator('#tokenDetail input[data-field=postal_code]').fill('12345')
+            assert page.locator('#qcount').inner_text()=='1'
+            page.click('[data-tab=queue]');page.select_option('#queueReason','postal')
+            assert 'формат почтового индекса' in page.locator('#queueDetail .record-checks').inner_text()
+            page.select_option('#language','kk')
+            assert 'Пошта индексінің' in page.locator('#queueDetail .record-checks').inner_text()
+            page.select_option('#language','ru');page.select_option('#queueReason','all')
+            page.click('[data-tab=parse]')
+            page.fill('#input','Алматы, ул Абая дом12 дом14')
+            page.click('#run')
+            page.wait_for_function("rows.length===1 && rows[0].review.issues.some(i=>i.code==='conflicting_house')")
+            page.click('[data-tab=queue]');page.select_option('#queueReason','ambiguous')
+            assert page.locator('#queueDetail mark[title="Дом"]').inner_text()=='дом12'
+            page.select_option('#language','kk')
+            assert 'Бірнеше түрлі нөмір' in page.locator('#queueDetail .record-checks').inner_text()
+            page.select_option('#language','ru')
+            page.evaluate('window.scrollTo(0,0)')
+            page.evaluate("Promise.all(document.getAnimations().filter(a=>a.effect.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))")
+            page.screenshot(path=str(ROOT/'.venv/review-reasons-ru.png'),full_page=True)
+            page.locator('#queueDetail .review-choices button',has_text='14').first.click()
+            assert page.locator('#queueDetail input[data-field=house]').input_value()=='14'
+            page.click('#confirm')
+            assert page.locator('#qcount').inner_text()=='0'
+            page.select_option('#queueReason','all')
             # RU / KK, light / dark, all tabs and auth forms at required sizes.
             for width in [375,768,1440]:
                 page.set_viewport_size({'width':width,'height':960})

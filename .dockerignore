@@ -2,3 +2,6 @@
 data
 reference/*.pbf
 __pycache__
+.git
+.env
+.env.*

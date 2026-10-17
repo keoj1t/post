@@ -28,3 +28,5 @@
 Страница ошибок строится из редактируемого `app/static/errors-log.json`: исходный пример, проблема, исправление и ожидаемые поля. Тест `test_error_page_results_match_the_parser` проверяет каждую запись против настоящего парсера; результаты не являются выдуманной оценкой качества на всём наборе.
 
 Проверка Windows-запуска: `.venv\Scripts\python.exe -m unittest test_start_windows -v`. Docker-ветки проверяются имитацией CLI и Desktop; локальный режим действительно поднимает API и страницу на свободном порту. Без установленного Docker реальная сборка образа и работа движка не проверены.
+
+Расширенные правила RU/KK, слитные записи, почтовые индексы, корпус/строение, состав API `review` и ограничения: [ADDRESS-RULES.md](ADDRESS-RULES.md). Для расширенного набора: `.venv\Scripts\python.exe -X utf8 -m unittest test_address_grammar test_parser_variants -q`.

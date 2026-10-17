@@ -1,26 +1,39 @@
 ﻿// Проверки помогают оператору, но не подменяют исходные поля.
 function fieldLabel(row,key){
+  if(key==='city'&&row.review?.locality_kind==='village')return translateText('Населённый пункт');
   if(key==='street_name'&&row.street_type==='квартал')return translateText('Квартал');
   if(key==='street_name'&&row.street_type==='микрорайон')return translateText('Микрорайон');
   return translateText(FIELDS.find(([name])=>name===key)?.[1]||key);
 }
-function recordChecks(row){
-  const checks=[];
-  if(!row.house)checks.push(translateText('Не указан дом.'));
-  if(!row.street_name&&!row.living_area)checks.push(translateText('Не указана улица или жилмассив.'));
-  if(!row.city)checks.push(translateText('Не указан город.'));
-  const normalize=value=>String(value||'').toLocaleLowerCase().replace(/(?:^|\s)(?:город|область)(?=\s|$)/gu,'').replace(/(?:қаласы|облысы)/gu,'').trim();
-  const city=String(row.city||'').toLocaleLowerCase().trim(),province=normalize(row.province);
-  const independent={'астана':'астана','нур-султан':'астана','алматы':'алматы','шымкент':'шымкент'};
-  if(independent[city]&&province&&province!==independent[city])checks.push(translateText('Город и область не согласованы. Проверьте географию.'));
-  if(confidence(row)<threshold)checks.push(translateText('Низкая уверенность: проверьте поля перед подтверждением.'));
-  return checks;
+function reviewIssues(row){
+  const current=(row.review?.issues||[]).filter(issue=>Object.entries(issue.observed||{}).every(([key,value])=>(row[key]??null)===(value??null)));
+  const seen=new Set(current.map(issue=>issue.code));
+  const local=(code,field,ru,kk,hintRu,hintKk)=>{if(!seen.has(code))current.push({code,field,severity:'warning',message:{ru,kk},suggestion:{ru:hintRu,kk:hintKk},candidates:[]});};
+  if(!row.house)local('missing_house','house','Не найден номер дома.','Үй нөмірі табылмады.','Укажите номер дома по исходной строке.','Үй нөмірін бастапқы жол бойынша енгізіңіз.');
+  if(!row.street_name&&!row.living_area)local('missing_street','street_name','Не найдена улица или жилмассив.','Көше не тұрғын алап табылмады.','Уточните название улицы или жилмассива.','Көше не тұрғын алап атауын нақтылаңыз.');
+  if(!row.city)local('missing_city','city','Не найден город.','Қала табылмады.','Уточните город: это поможет проверить район и область.','Қаланы нақтылаңыз: бұл аудан мен облысты тексеруге көмектеседі.');
+  if(row.postal_code&&!/^(?:[0-9]{6}|[a-z][0-9]{2}[a-z][0-9][a-z][0-9])$/i.test(row.postal_code))local('invalid_postal','postal_code','Необычный формат почтового индекса.','Пошта индексінің пішімі ерекше.','Проверьте индекс; не дополняйте его случайными цифрами.','Индексті тексеріңіз; кездейсоқ сан қоспаңыз.');
+  if(confidence(row)<threshold&&!current.some(issue=>issue.severity==='warning'))local('low_confidence',null,'Уверенность ниже выбранного порога.','Сенімділік таңдалған шектен төмен.','Сверьте все поля и подтвердите результат вручную.','Барлық өрісті салыстырып, нәтижені қолмен растаңыз.');
+  return current;
+}
+function recordChecks(row){return reviewIssues(row).filter(issue=>issue.severity==='warning').map(issue=>issue.message[language]||issue.message.ru);}
+function needsReview(row){return confidence(row)<threshold||reviewIssues(row).some(issue=>issue.severity==='warning');}
+function matchesQueueReason(row){
+  const reason=$('queueReason')?.value||'all';
+  return reason==='all'||reviewIssues(row).some(issue=>reason==='missing'?issue.code.startsWith('missing_'):reason==='geo'?issue.code.includes('geo')||issue.code.includes('city')||issue.code.includes('province'):reason==='postal'?issue.code.includes('postal'):issue.code.includes('conflict')||issue.code.includes('multiple')||issue.code.includes('overlap')||issue.code.includes('unassigned')||issue.code.includes('unbound'));
 }
 function renderChecks(target,row){
-  target.textContent='';
-  const checks=recordChecks(row);
-  target.hidden=!checks.length;
-  if(checks.length){target.append(create('strong',translateText('Обратите внимание')));const list=create('ul');checks.forEach(text=>list.append(create('li',text)));target.append(list);}
+  target.textContent='';const issues=reviewIssues(row);target.hidden=!issues.length;
+  if(!issues.length)return;
+  target.append(create('strong',translateText('Почему нужна проверка')));
+  const list=create('ul');
+  for(const issue of issues){
+    const item=create('li',undefined,issue.severity==='info'?'review-info':'review-warning');
+    item.append(create('strong',issue.message[language]||issue.message.ru),create('p',issue.suggestion[language]||issue.suggestion.ru));
+    if(issue.candidates?.length){const choices=create('div',undefined,'review-choices');for(const candidate of issue.candidates){const button=create('button',candidate.label);button.type='button';button.onclick=()=>{for(const [key,value] of Object.entries(candidate.changes||{}))if(FIELDS.some(([field])=>field===key))row[key]=value;const index=rows.indexOf(row);reviewed.delete(index);if(activeTab==='queue'){$('queueReason').value='all';queueIndex=Math.max(0,queueItems().filter(i=>!reviewed.has(i)).indexOf(index));}refresh();toast('Вариант применён. Проверьте и подтвердите.');};choices.append(button);}item.append(choices);}
+    list.append(item);
+  }
+  target.append(list);
 }
 function updateValidationSummary(){
   const count=rows.filter(row=>recordChecks(row).length).length;
@@ -54,3 +67,5 @@ $('tokenUndo').onclick=()=>{if(rows[tokenIndex])revert(tokenIndex);};
 $('queueJson').onclick=()=>$('dlJson').click();$('queueCsv').onclick=()=>$('dlCsv').click();
 $('queueReviewed').onchange=()=>{$('exportReviewed').checked=$('queueReviewed').checked;};
 $('exportReviewed').onchange=()=>{$('queueReviewed').checked=$('exportReviewed').checked;};
+
+$('queueReason').onchange=()=>{queueIndex=0;renderQueue();};
