@@ -30,6 +30,8 @@ CITIES = {
     "Жезказган": (47.72, 67.65, 47.85, 67.90),
     "Балхаш":  (46.80, 74.85, 46.92, 75.10),
 }
+BASE_CITIES = set(CITIES)   # города, для которых районы берём из OSM
+
 HIGHWAYS = {"residential", "primary", "secondary", "tertiary", "unclassified",
             "living_street", "pedestrian", "trunk", "service", "road"}
 
@@ -76,6 +78,62 @@ def city_of(lat, lon):
     return None
 
 
+# --- Автоматическое расширение списка городов (запуск с флагом --towns) ---
+# Для каждого узла place=city/town из дампа OSM, который не попал в CITIES выше,
+# добавляется прямоугольник вокруг центра. Одноимённые населённые пункты
+# пропускаются: их улицы нельзя надёжно разделить по названию города.
+TOWN_HALF_LAT = 0.07   # примерно 8 км на север и юг
+TOWN_HALF_LON = 0.10   # примерно 7 км на восток и запад
+
+
+def is_good_town_name(nm):
+    """Только кириллица, дефис, пробел, точка; без цифр и иероглифов; без слов вроде «село имени»."""
+    n = nm.strip().lower()
+    if not re.fullmatch(r"[а-яёәіңғүұқөһ\- .]+", n):
+        return False
+    return not re.match(r"^(?:село|поселок|посёлок|имени|аул)\b", n)
+
+
+def collect_towns(pbf):
+    import osmium
+    try:
+        nodes_only = osmium.osm.osm_entity_bits.NODE
+    except AttributeError:
+        nodes_only = osmium.osm.NODE
+    fp = osmium.FileProcessor(pbf, nodes_only).with_filter(osmium.filter.KeyFilter("place"))
+    found = {}
+    for o in fp:
+        if not o.is_node():
+            continue
+        tags = o.tags
+        if tags.get("place") not in ("city", "town"):
+            continue
+        nm = ru_name(tags)
+        if not nm or "/" in nm or not is_good_town_name(nm):
+            continue
+        found.setdefault(norm(nm), []).append((nm.strip(), o.location.lat, o.location.lon))
+    return found
+
+
+def add_towns(found):
+    added, duplicates, inside = [], [], []
+    for key in sorted(found):
+        items = found[key]
+        if len(items) > 1:
+            duplicates.append(items[0][0])
+            continue
+        nm, lat, lon = items[0]
+        if nm in CITIES:
+            continue
+        if city_of(lat, lon):
+            inside.append(nm)
+            continue
+        CITIES[nm] = (lat - TOWN_HALF_LAT, lon - TOWN_HALF_LON,
+                      lat + TOWN_HALF_LAT, lon + TOWN_HALF_LON)
+        added.append(nm)
+    return added, duplicates, inside
+
+
 def clean_district(name):
     n = DISTRICT_RE.sub(" ", name)
     n = re.sub(r"\s+", " ", n).strip(" .,-")
@@ -101,11 +159,17 @@ def sample_points(nodes):
     return pts
 
 
-def main(pbf, out):
+def main(pbf, out, towns=False):
     import osmium
     import shapely.wkb as wkb
     from shapely.geometry import Point
     from shapely.prepared import prep
+
+    if towns:
+        added, duplicates, inside = add_towns(collect_towns(pbf))
+        print(f"Добавлено городов и посёлков: {len(added)}")
+        print(f"Пропущено из-за одинаковых названий: {len(duplicates)}: {duplicates[:20]}")
+        print(f"Пропущено, так как уже внутри другого города: {len(inside)}")
 
     streets = []
     places = []
@@ -151,7 +215,7 @@ def main(pbf, out):
             except Exception:
                 continue
             city = city_of(rp.y, rp.x)
-            if not city:
+            if not city or city not in BASE_CITIES:
                 continue
             s_, w_, n_, e_ = CITIES[city]
             minx, miny, maxx, maxy = poly.bounds
@@ -217,6 +281,6 @@ def main(pbf, out):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        sys.exit("Использование: python scripts/build_osm.py путь/к/kazakhstan-latest.osm.pbf")
+        sys.exit("Использование: python scripts/build_osm.py путь/к/kazakhstan-latest.osm.pbf [--towns]")
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "osm_streets.sqlite")
-    main(sys.argv[1], out)
+    main(sys.argv[1], out, towns="--towns" in sys.argv[2:])

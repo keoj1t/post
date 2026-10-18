@@ -1,0 +1,3030 @@
+=== TREE ===
+.dockerignore  0 KB
+.env  0 KB
+.gitignore  0 KB
+build_frontend.py  1 KB
+docker-compose.yml  0 KB
+dockerfile  0 KB
+README.md  7 KB
+repo_dump.txt  0 KB
+requirements.txt  0 KB
+START.bat  4 KB
+app\auth.py  5 KB
+app\geo.py  5 KB
+app\glued.py  13 KB
+app\main.py  7 KB
+app\normalization.py  14 KB
+app\osm.py  6 KB
+app\parser.py  48 KB
+app\review.py  17 KB
+app\__init__.py  0 KB
+app\static\account.js  6 KB
+app\static\app.js  23 KB
+app\static\base.js  2 KB
+app\static\errors-log.json  9 KB
+app\static\i18n.js  15 KB
+app\static\index.html  137 KB
+app\static\page.html  13 KB
+app\static\quality.js  8 KB
+app\static\styles.css  18 KB
+data\kazakhstan-latest.osm.pbf  219218 KB
+data\sample_input.json  0 KB
+data\sample_output.json  0 KB
+reference\kato_ru.csv  675 KB
+reference\kazakhstan-latest.osm.pbf  219218 KB
+reference\osm_streets.sqlite  2252 KB
+scripts\build_osm.py  8 KB
+tests\test_regressions.py  7 KB
+
+=== docker-compose.yml ===
+services:
+  api:
+    build:
+      context: .
+      dockerfile: dockerfile
+    ports:
+      - "${JANA_PORT:-8080}:8000"
+    volumes:
+      - accounts:/srv/data
+
+volumes:
+  accounts:
+
+=== dockerfile ===
+FROM python:3.11-slim
+WORKDIR /srv
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app ./app
+COPY build_frontend.py ./build_frontend.py
+RUN python build_frontend.py
+COPY reference ./reference
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+=== requirements.txt ===
+fastapi
+uvicorn
+rapidfuzz
+python-multipart
+
+=== .gitignore ===
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+.env
+.env.*
+!.env.example
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+*.pbf
+*.sqlite-wal
+*.sqlite-shm
+
+# Local accounts and sessions
+data/accounts.sqlite3*
+
+=== .dockerignore ===
+.venv
+data
+reference/*.pbf
+__pycache__
+.git
+.env
+.env.*
+
+=== START.bat ===
+@echo off
+setlocal
+cd /d "%~dp0"
+set "dockerCommand=docker"
+set "dockerDesktop="
+set "dockerWait=0"
+if not defined JANA_PORT set "JANA_PORT=8080"
+if /i "%~1"=="--local" goto local
+if not "%~1"=="" if /i not "%~1"=="--docker" goto usage
+where docker >nul 2>nul
+if not errorlevel 1 goto dockercheck
+if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" set "dockerCommand=%ProgramFiles%\Docker\Docker\resources\bin\docker.exe"
+if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" goto dockercheck
+if /i "%~1"=="--docker" goto nodocker
+echo Docker is not installed. Starting with local Python instead.
+echo To require Docker, use START.bat --docker.
+goto local
+:dockercheck
+call "%dockerCommand%" compose version >nul 2>nul
+if errorlevel 1 goto nocompose
+call "%dockerCommand%" info >nul 2>nul
+if not errorlevel 1 goto compose
+if defined JANA_DOCKER_DESKTOP if exist "%JANA_DOCKER_DESKTOP%" set "dockerDesktop=%JANA_DOCKER_DESKTOP%"
+if not defined dockerDesktop if exist "%ProgramFiles%\Docker\Docker\Docker Desktop.exe" set "dockerDesktop=%ProgramFiles%\Docker\Docker\Docker Desktop.exe"
+if not defined dockerDesktop if exist "%LOCALAPPDATA%\Docker\Docker Desktop.exe" set "dockerDesktop=%LOCALAPPDATA%\Docker\Docker Desktop.exe"
+if not defined dockerDesktop goto noengine
+echo Starting Docker Desktop. Waiting up to 120 seconds for Docker...
+call powershell -NoProfile -Command "Start-Process -FilePath $env:dockerDesktop -WindowStyle Hidden"
+if errorlevel 1 goto fail
+:waitdocker
+call "%dockerCommand%" info >nul 2>nul
+if not errorlevel 1 goto compose
+set /a dockerWait+=1 >nul
+if %dockerWait% GEQ 60 goto dockertimeout
+call timeout /t 2 /nobreak >nul
+goto waitdocker
+:compose
+echo Jana Address: http://127.0.0.1:%JANA_PORT%
+echo Building and starting frontend and backend with Docker Compose.
+echo First build requires internet. Press Ctrl+C to stop the project.
+call "%dockerCommand%" compose up --build
+if errorlevel 1 goto fail
+exit /b 0
+:local
+if exist ".venv\Scripts\python.exe" goto localrun
+where py >nul 2>nul
+if errorlevel 1 goto nopython
+py -3.12 -m venv .venv
+if errorlevel 1 py -3 -m venv .venv
+if errorlevel 1 goto fail
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+if errorlevel 1 goto fail
+:localrun
+.venv\Scripts\python.exe -c "import fastapi, uvicorn, rapidfuzz, multipart"
+if not errorlevel 1 goto localbuild
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+if errorlevel 1 goto fail
+:localbuild
+.venv\Scripts\python.exe build_frontend.py
+if errorlevel 1 goto fail
+echo Jana Address: http://127.0.0.1:%JANA_PORT%
+echo Frontend and backend run together. Press Ctrl+C to stop.
+.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port %JANA_PORT%
+if errorlevel 1 goto fail
+exit /b 0
+:nodocker
+echo Docker was not found. Install Docker Desktop, then run START.bat again.
+echo Alternatively, run START.bat --local.
+goto fail
+:nocompose
+echo Docker Compose is unavailable. Install or update Docker Desktop.
+goto fail
+:noengine
+echo Docker is installed but its engine is not running.
+echo Start your Docker engine, then run START.bat again.
+goto fail
+:dockertimeout
+echo Docker did not become ready within 120 seconds.
+echo Check Docker Desktop and its WSL or virtualization settings, then retry.
+goto fail
+:nopython
+echo Python 3 is required for local mode. Install Python or use Docker Desktop.
+goto fail
+:usage
+echo Usage: START.bat [--docker ^| --local]
+goto fail
+:fail
+echo Startup failed. See the error above.
+if not defined JANA_NO_PAUSE pause
+exit /b 1
+
+=== build_frontend.py ===
+from pathlib import Path
+import json
+from app.normalization import FIELD_WORDS, STREET_WORDS, TYPO_ALIASES
+root = Path(__file__).resolve().parent
+source = root / 'app' / 'static'
+html = (source / 'page.html').read_text(encoding='utf-8-sig')
+html = html.replace('/*STYLES*/', (source / 'styles.css').read_text(encoding='utf-8-sig'))
+errors = json.loads((source / 'errors-log.json').read_text(encoding='utf-8-sig'))
+html = html.replace('/*ERRORS*/', json.dumps(errors, ensure_ascii=False).replace('<', chr(92) + 'u003c'))
+script = chr(10).join((source / name).read_text(encoding='utf-8-sig') for name in ('i18n.js', 'base.js', 'app.js', 'quality.js', 'account.js'))
+lexicon=json.dumps({'fields':FIELD_WORDS,'streets':STREET_WORDS,'typos':TYPO_ALIASES},ensure_ascii=False,sort_keys=True).replace('<',chr(92)+'u003c')
+script='const ADDRESS_LEXICON='+lexicon+';'+chr(10)+script
+html = html.replace('/*SCRIPT*/', script)
+(source / 'index.html').write_text(html, encoding='utf-8')
+print('Built app/static/index.html')
+
+=== app\static\account.js ===
+let authMode='login',currentUser=null,authErrorKey='',authPending=false;
+const dialog=$('authDialog');
+function toast(text){$('toast').textContent=translateText(text);$('toast').hidden=false;setTimeout(()=>$('toast').hidden=true,3500);}
+function authCopy(){const registration=authMode==='register';$('authTitle').textContent=translateText(registration?'Создать аккаунт':'С возвращением');$('authSubtitle').textContent=translateText(registration?'Добро пожаловать в Jana Post.':'Войдите в свой аккаунт Jana Post.');$('nameGroup').hidden=!registration;$('authName').required=registration;$('passwordHint').hidden=!registration;$('authPassword').autocomplete=registration?'new-password':'current-password';$('authSubmit').textContent=translateText(registration?'Зарегистрироваться':'Войти');$('authSwitchText').textContent=translateText(registration?'Уже есть аккаунт?':'Ещё нет аккаунта?');$('authSwitch').textContent=translateText(registration?'Войти':'Регистрация');$('authError').textContent=translateText(authErrorKey);}
+function openAuth(mode){authMode=mode;authErrorKey='';$('authForm').reset();$('authPassword').type='password';$('showPassword').setAttribute('aria-label',translateText('Показать пароль'));authCopy();dialog.showModal();}
+function setUser(user){currentUser=user;$('openLogin').hidden=!!user;$('openRegister').hidden=!!user;$('account').hidden=!user;$('accountName').textContent=user?.name||'';$('accountName').dataset.initial=user?.name?.trim().charAt(0).toUpperCase()||'';$('accountName').setAttribute('aria-label',user?.name||'');$('accountName').title=user?.email||'';}
+async function accountRequest(path,body){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);try{const response=await fetch('/auth/'+path,{method:body===undefined?'GET':'POST',credentials:'same-origin',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});let data;try{data=await response.json();}catch{throw Error('Не удалось подключиться. Попробуйте ещё раз.');}if(!response.ok){const messages={invalid_credentials:'Неверная почта или пароль.',email_exists:'Этот адрес почты уже зарегистрирован.',invalid_email:'Проверьте адрес электронной почты.',invalid_name:'Укажите ваше имя.',too_many_attempts:'Слишком много попыток. Попробуйте через 15 минут.'};throw Error(messages[data.detail]||(response.status===422?'Проверьте заполненные поля. Пароль — от 10 до 128 символов.':'Не удалось подключиться. Попробуйте ещё раз.'));}return data;}catch(error){if(error.name==='AbortError'||error instanceof TypeError)throw Error('Не удалось подключиться. Попробуйте ещё раз.');throw error;}finally{clearTimeout(timer);}}
+$('openLogin').onclick=()=>openAuth('login');$('openRegister').onclick=()=>openAuth('register');$('closeAuth').onclick=()=>dialog.close();dialog.addEventListener('click',event=>{const rect=dialog.getBoundingClientRect();if(event.target===dialog&&(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom))dialog.close();});dialog.addEventListener('close',()=>{$('authPassword').value='';});$('authSwitch').onclick=()=>{authMode=authMode==='login'?'register':'login';authErrorKey='';$('authPassword').value='';authCopy();};
+$('showPassword').onclick=()=>{const show=$('authPassword').type==='password';$('authPassword').type=show?'text':'password';$('showPassword').setAttribute('aria-label',translateText(show?'Скрыть пароль':'Показать пароль'));};
+$('authForm').onsubmit=async event=>{event.preventDefault();if(authPending||!$('authForm').reportValidity())return;authPending=true;const mode=authMode;authErrorKey='';authCopy();$('authForm').setAttribute('aria-busy','true');$('authSubmit').disabled=true;$('authSwitch').disabled=true;try{const body={email:$('authEmail').value,password:$('authPassword').value};if(mode==='register')body.name=$('authName').value;const data=await accountRequest(mode,body);setUser(data.user);dialog.close();toast(mode==='register'?'Аккаунт создан. Добро пожаловать!':'Вы вошли в аккаунт.');}catch(error){authErrorKey=error.message;authCopy();}finally{authPending=false;$('authSubmit').disabled=false;$('authSwitch').disabled=false;$('authForm').removeAttribute('aria-busy');}};
+$('logout').onclick=async()=>{$('logout').disabled=true;try{await accountRequest('logout',{});setUser(null);toast('Вы вышли из аккаунта.');}catch(error){toast(error.message);}finally{$('logout').disabled=false;}};
+function renderHead(){$('thead').textContent='';const row=create('tr');['#','Исходный адрес',...FIELDS.map(f=>f[1]),'Уверенность'].forEach(label=>row.append(create('th',translateText(label))));$('thead').append(row);}
+function applyLanguage(){translateStatic();renderHead();renderLegends();refresh();tab(activeTab);renderErrors();authCopy();if(!rows.length)status('Добавьте адреса, чтобы начать.');}
+$('language').onchange=()=>{language=$('language').value;save('jana-language',language);applyLanguage();};
+applyLanguage();accountRequest('me').then(data=>setUser(data.user)).catch(()=>setUser(null));
+
+=== app\static\app.js ===
+const create=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
+const examples=['66квартал 12дом 69квартира','Ул .Курильская 9 кв 1','Туран 55/6 магазин береке 4подьезд 9этаж','Нурсити 2 микрорайон 11дом 5 подьезд 239 кв','город Алматы/Алматы қаласы, Мкр Аксай 3а, 59, кв 70'];
+let original=[],reviewed=new Set(),disabledFields=new Set(),page=0,tokenIndex=0,queueIndex=0,activeTab='parse',threshold=.6,queueCurrentRow=null;
+const confidence=r=>typeof r.confidence==='number'&&Number.isFinite(r.confidence)?r.confidence:0;
+const clone=x=>JSON.parse(JSON.stringify(x));
+function save(key,value){try{localStorage.setItem(key,value);}catch{}}
+function load(key){try{return localStorage.getItem(key);}catch{return null;}}
+let theme=load('jana-theme')||'light';
+function applyTheme(){document.documentElement.dataset.theme=theme;$('theme').setAttribute('aria-pressed',String(theme==='dark'));}applyTheme();
+$('theme').onclick=()=>{theme=theme==='dark'?'light':'dark';applyTheme();save('jana-theme',theme);};
+const saved=load('jana-threshold');if(saved!==null&&Number.isFinite(+saved)&&+saved>=0&&+saved<=1)threshold=+saved;$('threshold').value=threshold;
+function tab(name){
+  activeTab=name;
+  document.querySelectorAll('[role=tabpanel]').forEach(panel=>panel.hidden=panel.id!==name);
+  document.querySelectorAll('[data-tab]').forEach(button=>button.setAttribute('aria-selected',String(button.dataset.tab===name)));
+  const title=$('title'),subtitle=$('subtitle');title.textContent='';
+  if(name==='parse'){
+    title.append(document.createTextNode(language==='kk'?'Әр мекенжай.':'Каждый адрес.'),create('br'),create('span',language==='kk'?'Өз орнында.':'На своём месте.'));
+    subtitle.textContent=language==='kk'?'Мекенжайларды қосыңыз — бәрін ретке келтіреміз. Сізге тек тексеріп, сақтау қалады.':'Добавьте адреса — мы разложим всё по полочкам. Вам останется проверить и сохранить.';
+  }else{
+    title.textContent=translateText(name==='tokens'?'Детали адреса':name==='errors'?'Ошибки и исправления':'Неуверенные сначала');
+    subtitle.textContent=translateText(name==='tokens'?'Нажмите на поле, чтобы внести изменения.':name==='errors'?'Примеры, которые помогли улучшить распознавание.':'Проверьте выделенные адреса и при необходимости исправьте поля.');
+  }
+  document.querySelector('.hero-card').hidden=name!=='parse';document.querySelector('.hero-steps').hidden=name!=='parse';
+  if(name==='tokens')renderTokens();if(name==='queue')renderQueue();if(name==='errors')renderErrors();
+}
+document.querySelectorAll('[data-tab]').forEach(e=>{e.onclick=()=>tab(e.dataset.tab);e.onkeydown=event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key))return;event.preventDefault();const tabs=[...document.querySelectorAll('[data-tab]')];const next=tabs[(tabs.indexOf(e)+(event.key==='ArrowRight'?1:tabs.length-1))%tabs.length];next.focus();tab(next.dataset.tab);};});
+function searchable(raw){
+  let text='',map=[],previous='';
+  for(let i=0;i<raw.length;i++){
+    const current=raw[i];
+    if(/[\u200b-\u200f\u2060\ufeff\u00ad]/.test(current))continue;
+    if(previous&&((/\p{L}/u.test(previous)&&/\d/.test(current))||(/\d/.test(previous)&&/\p{L}/u.test(current)))){text+=' ';map.push(i);}
+    text+=current.toLowerCase();map.push(i);previous=current;
+  }
+  return {text,map};
+}
+const word=c=>!!c&&/[\p{L}\p{N}_]/u.test(c),digit=c=>!!c&&/\d/.test(c);
+function findRange(raw,value,used,field){if(value==null||String(value)==='')return null;const {text,map}=searchable(raw);const candidates=field==='street_type'?(ABBR[String(value).toLowerCase()]||[String(value)]):[String(value)];for(const candidate of candidates){const needle=searchable(candidate).text;let from=0;while(needle&&from<text.length){const i=text.indexOf(needle,from);if(i<0)break;const j=i+needle.length,left=!word(text[i-1])||digit(text[i-1])!==digit(text[i]),right=!word(text[j])||digit(text[j-1])!==digit(text[j]);const a=map[i],b=map[j-1]+1;if(left&&right&&!used.some(([x,y])=>a<y&&b>x))return [a,b];from=i+1;}}return null;}
+function ranges(row){
+  const raw=String(row.raw_address??''),used=[],marks=[];
+  const markers={living_area:'ж\\s*[./]?\\s*м[.]?|жилмассив|жилой\\s+массив|тұрғын\\s+алап',house:'дом|дм|д|үй|үйі|уй|bld|house',apartment:'квартира|кварт|кв|flat|kv|апт|пәтер|пәтері|apt|appt',entrance:'подъезд|подьезд|подьедз|подъедз|подезд|подъ|под|кіреберіс|кіреберісі|entrance',floor:'этаж|эт|floor|қабат|қабаты',postal_code:'индекс|индексі|postal code|zip',building:'корпус|корп|к|блок|block|корпусы',structure:'строение|стр|құрылыс|құрылысы'};
+  Object.keys(ADDRESS_LEXICON.fields).forEach(key=>{markers[key]=numericMarkerPattern(key)||markers[key];});
+  FIELDS.map(([k])=>k).sort((a,b)=>String(row[b]??'').length-String(row[a]??'').length||(a==='city'?-1:b==='city'?1:0)).forEach(k=>{
+    const range=findRange(raw,row[k],used,k);if(!range)return;
+    let [a,b]=range;
+    if(markers[k]){
+      const prefix=new RegExp('(?<![\\p{L}])(?:'+markers[k]+')[.\\s]*$','iu').exec(raw.slice(0,a));
+      const suffix=new RegExp('^[.\\s]*(?:'+markers[k]+')(?![\\p{L}])','iu').exec(raw.slice(b));
+      const x=prefix?prefix.index:a,y=!prefix&&suffix?b+suffix[0].length:b;
+      if(!used.some(([u,v])=>x<v&&y>u)){a=x;b=y;}
+    }
+    used.push([a,b]);marks.push([a,b,k]);
+  });
+  return marks.sort((a,b)=>a[0]-b[0]);
+}
+function renderRaw(target,row){target.textContent='';const raw=String(row.raw_address??'');let position=0;for(const [a,b,key] of ranges(row)){target.append(document.createTextNode(raw.slice(position,a)));const mark=create(disabledFields.has(key)?'span':'mark',raw.slice(a,b));if(!disabledFields.has(key))mark.style.background=translateText(`var(--c-${key})`);mark.title=fieldLabel(row,key);target.append(mark);position=b;}target.append(document.createTextNode(raw.slice(position)));}
+function renderLegends(){for(const id of ['legend','tokenLegend']){$(id).textContent='';FIELDS.forEach(([k,label])=>{const chip=create('button',translateText(label),'chip');chip.style.background=translateText(`var(--c-${k})`);chip.setAttribute('aria-pressed',String(!disabledFields.has(k)));chip.onclick=()=>{disabledFields.has(k)?disabledFields.delete(k):disabledFields.add(k);renderLegends();renderTable();renderTokens();renderQueue();};$(id).append(chip);});}}
+function badge(row){const c=confidence(row);return create('span',translateText(`${Math.round(c*100)}%`),'badge '+(c>=.8?'good':c>=.6?'medium':'low'));}
+function updateStats(){const n=rows.length;$('total').textContent=n;$('average').textContent=n?Math.round(rows.reduce((s,r)=>s+confidence(r),0)/n*100)+'%':'—';const low=rows.filter((row,index)=>needsReview(row)&&!reviewed.has(index)).length;$('uncertain').textContent=low;$('qcount').textContent=low;$('filled').textContent=n?Math.round(rows.reduce((s,r)=>s+FIELDS.filter(([k])=>r[k]!=null&&r[k]!=='').length,0)/(n*FIELDS.length)*100)+'%':'—';$('coverage').textContent='';FIELDS.forEach(([k,label])=>{$('coverage').append(create('span',translateText(`${label}: ${n?Math.round(rows.filter(r=>r[k]!=null&&r[k]!=='').length/n*100):0}%`)));});$('thresholdValue').textContent=threshold.toFixed(2);['dlJson','dlCsv','copy','undo','queueJson','queueCsv'].forEach(id=>$(id).disabled=!n);updateValidationSummary();}
+function filteredRows(){let list=rows.map((row,index)=>({row,index}));const query=$('search').value.toLocaleLowerCase();if(query)list=list.filter(({row})=>Object.values(row).some(v=>String(v??'').toLocaleLowerCase().includes(query)));if($('onlylow').checked)list=list.filter(({row})=>needsReview(row));if($('sort').value!=='original')list.sort((a,b)=>(confidence(a.row)-confidence(b.row))*($('sort').value==='asc'?1:-1));return list;}
+function revert(index){rows[index]=clone(original[index]);reviewed.delete(index);refresh();}
+function renderTable(){const list=filteredRows(),pages=Math.max(1,Math.ceil(list.length/50));page=Math.min(page,pages-1);$('tbody').textContent='';if(!list.length){const tr=create('tr'),td=create('td');td.colSpan=FIELDS.length+3;td.className='empty';td.textContent=rows.length?translateText('Совпадений не найдено'):translateText('Добавьте адреса, чтобы увидеть результат.');tr.append(td);$('tbody').append(tr);}for(const {row,index} of list.slice(page*50,page*50+50)){const tr=create('tr'),number=create('td',index+1),undo=create('button','↶');undo.title=translateText('Отменить изменения');undo.setAttribute('aria-label','Откатить строку '+(index+1));undo.onclick=()=>revert(index);number.append(undo);tr.append(number);const raw=create('td',undefined,'raw');renderRaw(raw,row);if(reviewed.has(index))raw.append(create('div',translateText('✓ Проверено человеком'),'tag'));tr.append(raw);FIELDS.forEach(([k,label])=>{const td=create('td',row[k]??'','f');td.contentEditable='plaintext-only';td.setAttribute('aria-label',`${translateText(label)}, ${index+1}`);td.style.background=row[k]?translateText(`var(--c-${k})`):'';td.classList.toggle('edited',row[k]!==original[index][k]);td.oninput=()=>{row[k]=td.textContent.trim()||null;reviewed.delete(index);td.classList.toggle('edited',row[k]!==original[index][k]);td.title=row[k]!==original[index][k]?translateText('Исправлено вручную'):'';td.style.background=row[k]?translateText(`var(--c-${k})`):'';renderRaw(raw,row);updateStats();};td.onblur=()=>renderTable();td.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();td.blur();}};tr.append(td);});const conf=create('td');conf.append(badge(row));tr.append(conf);$('tbody').append(tr);}$('page').textContent=translateText(`${list.length} записей · Страница ${page+1} из ${pages}`);$('prev').disabled=page===0;$('next').disabled=page>=pages-1;}
+function renderDetail(target,index,editable){
+  target.textContent='';
+  if(index===undefined||!rows[index]){target.append(create('div',rows.length?translateText('Все выбранные адреса проверены.'):translateText('Сначала добавьте и обработайте адреса.'),'empty'));return;}
+  const row=rows[index],grid=create('div',undefined,'detail'),left=create('div'),raw=create('div',undefined,'bigraw');
+  renderRaw(raw,row);
+  left.append(create('p',translateText(`Запись ${index+1} / ${rows.length}`),'eyebrow'),raw,badge(row));
+  if(reviewed.has(index))left.append(create('p',translateText('✓ Проверено человеком'),'tag'));
+  const checks=create('div',undefined,'record-checks');renderChecks(checks,row);left.append(checks);
+  const fields=create('div',undefined,'fields');
+  FIELDS.forEach(([key,label])=>{
+    const box=create('div',undefined,'field');box.append(create('label',fieldLabel(row,key)));
+    box.classList.toggle('edited',row[key]!==original[index][key]);
+    const note=create('small',translateText('Не найдено в исходной строке'),'muted');
+    const updateNote=()=>{note.hidden=!row[key]||ranges(row).some(range=>range[2]===key);};
+    if(editable){
+      const input=create('input');input.value=row[key]??'';input.setAttribute('aria-label',fieldLabel(row,key));input.dataset.field=key;
+      input.oninput=()=>{row[key]=input.value.trim()||null;reviewed.delete(index);left.querySelector('.tag')?.remove();box.classList.toggle('edited',row[key]!==original[index][key]);box.title=row[key]!==original[index][key]?translateText('Исправлено вручную'):'';renderRaw(raw,row);updateNote();renderChecks(checks,row);updateStats();};
+      input.onblur=()=>renderTable();box.append(input);
+    }else box.append(create('div',row[key]??'—'));
+    updateNote();box.append(note);fields.append(box);
+  });grid.append(left,fields);target.append(grid);
+}
+function renderTokens(){tokenIndex=Math.max(0,Math.min(tokenIndex,rows.length-1));$('recordSelect').textContent='';for(let i=0;i<rows.length;i++){const option=create('option',translateText(`${i+1}. ${String(rows[i].raw_address??'').slice(0,80)}`));option.value=i;$('recordSelect').append(option);}$('recordSelect').value=tokenIndex;$('tokenPrev').disabled=!rows.length||tokenIndex===0;$('tokenNext').disabled=!rows.length||tokenIndex===rows.length-1;$('tokenUndo').disabled=!rows.length;renderDetail($('tokenDetail'),rows.length?tokenIndex:undefined,true);}
+function queueItems(){return rows.map((r,i)=>i).filter(i=>($('queueAll').checked||needsReview(rows[i]))&&matchesQueueReason(rows[i])).sort((a,b)=>confidence(rows[a])-confidence(rows[b]));}
+function renderQueue(){const items=queueItems(),pending=items.filter(i=>!reviewed.has(i));queueIndex=Math.max(0,Math.min(queueIndex,pending.length-1));const count=items.filter(i=>reviewed.has(i)).length;$('progressText').textContent=translateText(`Проверено ${count} из ${items.length}`);$('progress').max=items.length||1;$('progress').value=count;queueCurrentRow=pending[queueIndex]??null;renderDetail($('queueDetail'),queueCurrentRow??undefined,true);['confirm','fixConfirm','skip','queueBack'].forEach(id=>$(id).disabled=!pending.length);}
+function confirm(){if(queueCurrentRow!==null&&rows[queueCurrentRow])reviewed.add(queueCurrentRow);refresh();}
+function refresh(){updateStats();renderTable();if(activeTab==='tokens')renderTokens();if(activeTab==='queue')renderQueue();}
+function buildPayload(text){if(!text.trim())throw Error(translateText('Введите хотя бы один адрес'));if(/^[\s]*[\[{]/.test(text)){let data;try{data=JSON.parse(text);}catch{throw Error(translateText('Не удалось прочитать файл. Проверьте формат.'));}const list=Array.isArray(data)?data:(data.records||data.data||data.items||data.addresses||(Object.hasOwn(data,'raw_address')?[data]:null));if(!Array.isArray(list))throw Error(translateText('Не удалось прочитать файл. Проверьте формат.'));return list.map((item,i)=>{if(typeof item==='string')return {id:i+1,raw_address:item};if(!item||typeof item!=='object'||typeof item.raw_address!=='string')throw Error(translateText(`Запись ${i+1}: проверьте адрес.`));return {id:item.id,raw_address:item.raw_address};});}return text.split(/\r?\n/).filter(s=>s.trim()!=='').map((raw_address,i)=>({id:i+1,raw_address}));}
+async function run(){let payload;try{payload=buildPayload($('input').value);if(!payload.length)throw Error(translateText('Список адресов пуст.'));}catch(e){status(e.message,true);return;}$('run').disabled=true;$('clear').disabled=true;$('run').classList.add('busy');$('parse').setAttribute('aria-busy','true');$('retry').hidden=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),120000),start=performance.now();status(translateText(`Разбираем ${payload.length} адресов…${payload.length>1000?' Большой набор может занять больше времени.':''}`));try{const resp=await fetch('/parse/batch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});if(!resp.ok)throw Error(translateText('Сервис временно недоступен. Попробуйте позже.'));const data=await resp.json(),result=Array.isArray(data)?data:(data.results||data.records);if(!Array.isArray(result)||result.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw Error(translateText('Не удалось обработать адреса. Попробуйте ещё раз.'));rows=result;original=clone(rows);reviewed.clear();page=tokenIndex=queueIndex=0;refresh();status(translateText(`Готово: ${rows.length} адресов · ${((performance.now()-start)/1000).toFixed(2)} с · Нужна проверка: ${rows.filter(r=>confidence(r)<threshold).length}`));}catch(e){status(e.name==='AbortError'?translateText('Обработка заняла слишком много времени. Попробуйте меньший список.'):translateText('Сервис временно недоступен. Попробуйте позже.'),true);$('retry').hidden=false;}finally{clearTimeout(timeout);$('run').disabled=false;$('clear').disabled=false;$('run').classList.remove('busy');$('parse').removeAttribute('aria-busy');}}
+async function readFile(file){if(!file)return;if(!/\.(txt|json)$/i.test(file.name)){status(translateText('Выберите файл .json или .txt'),true);return;}try{$('input').value=await file.text();status(translateText(`Загружен ${file.name}${file.size>5*1024*1024?' · Большой файл: обработка может занять время.':''}`));}catch{status(translateText('Не удалось прочитать файл.'),true);}}
+function exportRows(){return rows.map((r,i)=>$('exportReviewed').checked?{...r,reviewed:reviewed.has(i)}:{...r});}
+function download(name,mime,text){const url=URL.createObjectURL(new Blob([text],{type:mime})),a=create('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function csvText(data){const cols=[...new Set(data.flatMap(r=>Object.keys(r)))];const esc=v=>{const s=v==null?'':typeof v==='object'?JSON.stringify(v):String(v);return /[",;\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};return '\ufeff'+[cols.map(esc).join(','),...data.map(r=>cols.map(k=>esc(r[k])).join(','))].join('\r\n');}
+$('run').onclick=$('retry').onclick=run;$('example').onclick=()=>{$('input').value=examples.join('\n');status(translateText('Примеры добавлены. Можно начать обработку.'));};$('clear').onclick=()=>{$('input').value='';rows=[];original=[];reviewed.clear();refresh();status(translateText('Очищено. Добавьте новые адреса.'));};$('file').onchange=e=>{readFile(e.target.files[0]);e.target.value='';};document.querySelector('label[for=file]').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('file').click();}};$('drop').ondragover=e=>{e.preventDefault();$('drop').classList.add('over');};$('drop').ondragleave=()=>$('drop').classList.remove('over');$('drop').ondrop=e=>{e.preventDefault();$('drop').classList.remove('over');readFile(e.dataTransfer.files[0]);};
+$('dlJson').onclick=()=>download('jana-address.json','application/json',JSON.stringify(exportRows(),null,2));$('dlCsv').onclick=()=>download('jana-address.csv','text/csv;charset=utf-8',csvText(exportRows()));$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(exportRows(),null,2));status(translateText('Скопировано.'));}catch{status(translateText('Не удалось скопировать. Скачайте файл.'),true);}};
+$('undo').onclick=()=>{rows=clone(original);reviewed.clear();refresh();};['search','sort','onlylow'].forEach(id=>$(id).addEventListener('input',()=>{page=0;renderTable();}));$('threshold').oninput=()=>{threshold=+$('threshold').value;save('jana-threshold',threshold);queueIndex=0;refresh();};$('prev').onclick=()=>{page--;renderTable();};$('next').onclick=()=>{page++;renderTable();};$('tokenPrev').onclick=()=>{tokenIndex--;renderTokens();};$('tokenNext').onclick=()=>{tokenIndex++;renderTokens();};$('recordSelect').onchange=()=>{tokenIndex=+$('recordSelect').value;renderTokens();};$('queueAll').onchange=()=>{queueIndex=0;renderQueue();};$('confirm').onclick=$('fixConfirm').onclick=confirm;$('fixConfirm').title=translateText('Измените поля и подтвердите');$('skip').onclick=()=>{const length=queueItems().filter(i=>!reviewed.has(i)).length;queueIndex=(queueIndex+1)%Math.max(1,length);renderQueue();};$('queueBack').onclick=()=>{queueIndex=Math.max(0,queueIndex-1);renderQueue();};document.addEventListener('keydown',e=>{if(activeTab!=='queue'||e.target.closest('input,textarea,select,button,[contenteditable]'))return;if(['Enter','ArrowRight','ArrowLeft'].includes(e.key)){e.preventDefault();if(e.key==='Enter')confirm();else $(e.key==='ArrowRight'?'skip':'queueBack').click();}});
+renderLegends();refresh();
+
+=== app\static\base.js ===
+
+const FIELDS = [
+  ["province","Область"],["city","Город"],["district","Район"],["living_area","Жилмассив"],
+  ["street_type","Тип улицы"],["street_name","Улица"],["house","Дом"],["apartment","Кв."],
+  ["entrance","Подъезд"],["floor","Этаж"],["landmark","Ориентир"],["postal_code","Индекс"],["building","Корпус"],["structure","Строение"]
+];
+const ABBR = {
+  "улица":["улица","ул.","ул"], "проспект":["проспект","пр-т","пр.","пр"], "переулок":["переулок","пер.","пер"],
+  "бульвар":["бульвар","бул.","бул"], "микрорайон":["микрорайон","мкр.","мкр"], "площадь":["площадь","пл.","пл"],
+  "шоссе":["шоссе","ш."], "тупик":["тупик"], "набережная":["набережная","наб."]
+};
+let rows = [];
+
+const $ = id => document.getElementById(id);
+const status = (t, err) => { const s=$("status"); s.textContent=translateText(t); s.className = err ? "err" : ""; };
+
+
+
+for(const marker of ['переулок','проспект','микрорайон','бульвар']){
+  if(!ABBR[marker])ABBR[marker]=[marker];
+  for(let i=0;i<marker.length;i++)ABBR[marker].push(marker.slice(0,i)+marker.slice(i+1));
+}
+
+ABBR['улица'].push('көше','көшесі','көш','street','st','ul');
+ABBR['проспект'].push('даңғыл','даңғылы','avenue','ave');
+ABBR['переулок'].push('тұйық','тұйығы','lane');
+ABBR['микрорайон'].push('шағынаудан','ықшамаудан');
+
+ABBR['проезд']=['проезд','өтпе','өткел'];ABBR['площадь']=['площадь','пл','алаң','алаңы'];ABBR['набережная']=['набережная','наб','жағалау','жағалауы'];
+for(const [kind,words] of Object.entries(ADDRESS_LEXICON.streets)){
+  const typos=Object.entries(ADDRESS_LEXICON.typos).filter(([,target])=>words.includes(target)).map(([alias])=>alias);
+  ABBR[kind]=[...new Set([...(ABBR[kind]||[]),...words,...typos])];
+}
+function numericMarkerPattern(field){
+  const words=ADDRESS_LEXICON.fields[field]||[];
+  const typos=Object.entries(ADDRESS_LEXICON.typos).filter(([,target])=>words.includes(target)).map(([alias])=>alias);
+  return [...new Set([...words,...typos])].sort((a,b)=>b.length-a.length).map(word=>word.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+}
+
+=== app\static\i18n.js ===
+let language='ru';
+try { language=localStorage.getItem('jana-language')==='kk'?'kk':'ru'; } catch {}
+const KK={
+'Населённый пункт':'Елді мекен',
+'Вариант применён. Проверьте и подтвердите.':'Нұсқа қолданылды. Тексеріп, растаңыз.',
+'Корпус':'Корпус','Строение':'Құрылыс',
+'Индекс':'Пошта индексі','Почему нужна проверка':'Неліктен тексеру қажет','Причина проверки':'Тексеру себебі','Все причины':'Барлық себеп','Не хватает полей':'Өрістер жетіспейді','Сомнения в географии':'География бойынша күмән','Почтовый индекс':'Пошта индексі','Неоднозначная запись':'Екіұшты жазба',
+'Ошибки и исправления':'Қателер мен түзетулер','Ошибки и что мы с ними сделали':'Қателер және оларды түзету','Подсветка токенов':'Мекенжай бөліктерін белгілеу','Один цвет — одно поле. Нажмите на значение справа, чтобы исправить его.':'Бір түс — бір өріс. Түзету үшін оң жақтағы мәнді басыңыз.','Показать пример':'Мысалды көрсету','Отменить изменения адреса':'Мекенжай өзгерістерін қайтару','Неуверенные сначала':'Алдымен сенімсіз мекенжайлар','Реальные примеры, исправления и результаты проверок. Без выдуманных метрик.':'Нақты мысалдар, түзетулер мен тексеру нәтижелері. Ойдан шығарылған көрсеткіштерсіз.','Найти пример':'Мысал іздеу','Поиск примеров':'Мысалдарды іздеу','Категория':'Санат','Все категории':'Барлық санат','Пример':'Мысал','Проблема':'Мәселе','Что исправили':'Не түзетілді','Результат проверки':'Тексеру нәтижесі','Проверено тестом':'Тестпен тексерілді','Проверить пример':'Мысалды тексеру','Кнопка проверки отправляет исходный пример на обработку. Результаты в таблице подтверждены автоматическими проверками.':'Тексеру батырмасы бастапқы мысалды өңдеуге жібереді. Кестедегі нәтижелер автоматты тексерулермен расталған.','Примеры, которые помогли улучшить распознавание.':'Тануды жақсартуға көмектескен мысалдар.','Не найдено в исходной строке':'Бастапқы жолда табылмады','Обратите внимание':'Назар аударыңыз','Не указан дом.':'Үй көрсетілмеген.','Не указана улица или жилмассив.':'Көше немесе тұрғын алап көрсетілмеген.','Не указан город.':'Қала көрсетілмеген.','Город и область не согласованы. Проверьте географию.':'Қала мен облыс сәйкес келмейді. Географияны тексеріңіз.','Низкая уверенность: проверьте поля перед подтверждением.':'Сенімділік төмен: растау алдында өрістерді тексеріңіз.','Квартал':'Орам','Микрорайон':'Шағынаудан',
+
+'Добавьте':'Қосыңыз','Проверьте':'Тексеріңіз','Сохраните':'Сақтаңыз',
+'Порядок начинается с адреса':'Бәрі дұрыс мекенжайдан басталады',
+'Добавьте адреса — мы разложим всё по полочкам.':'Мекенжайларды қосыңыз — бәрін ретке келтіреміз.',
+'Вам останется проверить и сохранить.':'Сізге тек тексеріп, сақтау қалады.',
+'Улица · Дом · Квартира':'Көше · Үй · Пәтер','Всё на своих местах':'Бәрі өз орнында',
+'Войти':'Кіру','Регистрация':'Тіркелу','Выйти':'Шығу','Адреса':'Мекенжайлар','Детали адреса':'Мекенжай мәліметтері','На проверку':'Тексеру қажет',
+'Ваши адреса':'Мекенжайларыңыз','Попробовать пример':'Мысалды көру','Каждый адрес с новой строки. Например: Алматы, Абая 25, кв 12':'Әр мекенжайды жаңа жолға жазыңыз. Мысалы: Алматы, Абай 25, 12-пәтер',
+'↑ Загрузить файл':'↑ Файл жүктеу','или перетащите сюда':'немесе осында сүйреп әкеліңіз','Очистить':'Тазалау','Обработать адреса →':'Мекенжайларды өңдеу →','Добавьте адреса, чтобы начать.':'Бастау үшін мекенжайларды қосыңыз.',
+'Всего адресов':'Барлық мекенжай','Средняя оценка разбора':'Орташа талдау бағасы','Уверенность распознавания':'Тану сенімділігі','Нужна проверка':'Тексеру қажет','Заполнено':'Толтырылды','Результаты':'Нәтижелер','Нажмите на поле, чтобы внести изменения.':'Өзгерту үшін өрісті басыңыз.',
+'Отменить изменения':'Өзгерістерден бас тарту','Найти адрес':'Мекенжай іздеу','Поиск адресов':'Мекенжайларды іздеу','По порядку':'Ретімен','Сначала неточные':'Алдымен тексерілетіндер','Сначала точные':'Алдымен сенімділер','Требуют проверки':'Тексеруді қажет етеді','Порог проверки':'Тексеру шегі',
+'← Назад':'← Артқа','Далее →':'Келесі →','Скачать JSON':'JSON жүктеу','Скачать CSV':'CSV жүктеу','Копировать':'Көшіру','С отметкой о проверке':'Тексеру белгісімен',
+'← Предыдущий':'← Алдыңғы','Следующий →':'Келесі →','Выбрать адрес':'Мекенжай таңдау','Проверим вместе':'Бірге тексерейік','Показать все':'Барлығын көрсету','Проверьте выделенные адреса и при необходимости исправьте поля.':'Белгіленген мекенжайларды тексеріп, қажет болса өрістерді түзетіңіз.',
+'Подтвердить':'Растау','Сохранить и подтвердить':'Сақтау және растау','Пропустить →':'Өткізіп жіберу →','Ближе к вам. Точнее до двери.':'Сізге жақын. Есігіңізге дейін дәл.',
+'Переключить тему':'Тақырыпты ауыстыру','Сортировка':'Сұрыптау','Закрыть':'Жабу','Ваше имя':'Атыңыз','Электронная почта':'Электрондық пошта','Пароль':'Құпиясөз','Показать пароль':'Құпиясөзді көрсету','Скрыть пароль':'Құпиясөзді жасыру','Не менее 10 символов.':'Кемінде 10 таңба.',
+'Область':'Облыс','Город':'Қала','Район':'Аудан','Жилмассив':'Тұрғын алап','Тип улицы':'Көше түрі','Улица':'Көше','Дом':'Үй','Кв.':'Пәтер','Подъезд':'Кіреберіс','Этаж':'Қабат','Ориентир':'Бағдар','Исходный адрес':'Бастапқы мекенжай','Уверенность':'Сенімділік',
+'Совпадений не найдено':'Сәйкестіктер табылмады','Добавьте адреса, чтобы увидеть результат.':'Нәтижені көру үшін мекенжайларды қосыңыз.','✓ Проверено человеком':'✓ Тексерілді','Исправлено вручную':'Қолмен түзетілді','Все выбранные адреса проверены.':'Таңдалған мекенжайлардың барлығы тексерілді.','Сначала добавьте и обработайте адреса.':'Алдымен мекенжайларды қосып, өңдеңіз.','Уточнено автоматически':'Автоматты түрде нақтыланды',
+'Введите хотя бы один адрес':'Кемінде бір мекенжай енгізіңіз','Не удалось прочитать файл.':'Файлды оқу мүмкін болмады.','Не удалось прочитать файл. Проверьте формат.':'Файлды оқу мүмкін болмады. Пішімін тексеріңіз.','Выберите файл .json или .txt':'JSON немесе TXT файлын таңдаңыз','Список адресов пуст.':'Мекенжайлар тізімі бос.','Не удалось обработать адреса. Попробуйте ещё раз.':'Мекенжайларды өңдеу мүмкін болмады. Қайталап көріңіз.','Сервис временно недоступен. Попробуйте позже.':'Қызмет уақытша қолжетімсіз. Кейінірек қайталаңыз.','Обработка заняла слишком много времени. Попробуйте меньший список.':'Өңдеу тым ұзаққа созылды. Қысқарақ тізімді қолданып көріңіз.',
+'Примеры добавлены. Можно начать обработку.':'Мысалдар қосылды. Өңдеуді бастауға болады.','Очищено. Добавьте новые адреса.':'Тазаланды. Жаңа мекенжайларды қосыңыз.','Скопировано.':'Көшірілді.','Не удалось скопировать. Скачайте файл.':'Көшіру мүмкін болмады. Файлды жүктеп алыңыз.','Повторить':'Қайталау','Измените поля и подтвердите':'Өрістерді түзетіп, растаңыз',
+'С возвращением':'Қайта келгеніңізге қуаныштымыз','Войдите в свой аккаунт Jana Post.':'Jana Post аккаунтыңызға кіріңіз.','Создать аккаунт':'Аккаунт ашу','Добро пожаловать в Jana Post.':'Jana Post қызметіне қош келдіңіз.','Уже есть аккаунт?':'Аккаунтыңыз бар ма?','Ещё нет аккаунта?':'Аккаунтыңыз жоқ па?','Зарегистрироваться':'Тіркелу','Аккаунт создан. Добро пожаловать!':'Аккаунт ашылды. Қош келдіңіз!','Вы вошли в аккаунт.':'Аккаунтқа кірдіңіз.','Вы вышли из аккаунта.':'Аккаунттан шықтыңыз.','Неверная почта или пароль.':'Пошта немесе құпиясөз қате.','Этот адрес почты уже зарегистрирован.':'Бұл пошта мекенжайы тіркелген.','Проверьте адрес электронной почты.':'Электрондық пошта мекенжайын тексеріңіз.','Укажите ваше имя.':'Атыңызды енгізіңіз.','Слишком много попыток. Попробуйте через 15 минут.':'Тым көп әрекет жасалды. 15 минуттан кейін қайталаңыз.','Проверьте заполненные поля. Пароль — от 10 до 128 символов.':'Толтырылған өрістерді тексеріңіз. Құпиясөз 10–128 таңбадан тұруы керек.','Не удалось подключиться. Попробуйте ещё раз.':'Қосылу мүмкін болмады. Қайталап көріңіз.'
+};
+function translateText(text){if(language!=='kk'||typeof text!=='string')return text;if(KK[text])return KK[text];return text
+.replace(/^Откатить строку (\d+)$/,'$1-жолдың өзгерістерін қайтару')
+.replace(/^Запись (\d+) \/ (\d+)$/,'$1 / $2 мекенжай')
+.replace(/^Проверено (\d+) из (\d+)$/,'$2 мекенжайдың $1-і тексерілді')
+.replace(/^(\d+) записей · Страница (\d+) из (\d+)$/,'$1 мекенжай · $2 / $3 бет')
+.replace(/^Разбираем (\d+) адресов…/,'$1 мекенжай өңделуде…')
+.replace(' Большой набор может занять больше времени.',' Үлкен тізімді өңдеу ұзағырақ болуы мүмкін.')
+.replace(/^Готово: (\d+) адресов · ([\d.]+) с · Нужна проверка: (\d+)$/,'Дайын: $1 мекенжай · $2 с · Тексеру қажет: $3')
+.replace(/^Загружен /,'Жүктелді: ').replace(' · Большой файл: обработка может занять время.',' · Үлкен файлды өңдеу ұзаққа созылуы мүмкін.')
+.replace(/^Запись (\d+): проверьте адрес\.$/,'$1-мекенжайды тексеріңіз.');}
+function translateStatic(){document.documentElement.lang=language;document.querySelectorAll('[data-i18n]').forEach(e=>{if(!e.dataset.ru)e.dataset.ru=e.textContent;const parts=e.dataset.ru.split('\n');e.textContent=parts.map(translateText).join('\n');});document.querySelectorAll('[data-i18n-placeholder]').forEach(e=>e.placeholder=translateText(e.dataset.i18nPlaceholder));document.querySelectorAll('[data-i18n-aria]').forEach(e=>e.setAttribute('aria-label',translateText(e.dataset.i18nAria)));document.querySelector('#language').value=language;}
+
+=== app\static\page.html ===
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#ffffff"><title>Jana Address</title><style>/*STYLES*/</style></head><body>
+<header><div class="top"><a href="#" class="brand" aria-label="Jana Post"><svg viewBox="0 0 32 38" fill="none" aria-hidden="true"><path d="M4 5h24v19L16 33 4 24Z" stroke="currentColor" stroke-width="2.5"/><path d="m9 17 5 5 10-12" stroke="currentColor" stroke-width="2.5"/></svg><span>jana post<span class="brand-dot">.</span></span></a><span class="product">Address</span><span class="spacer"></span><select id="language" aria-label="Язык / Тіл"><option value="ru">RU</option><option value="kk">ҚАЗ</option></select><button id="theme" class="icon-button" data-i18n-aria="Переключить тему" aria-label="Переключить тему">◐</button><button id="openLogin" class="quiet" data-i18n>Войти</button><button id="openRegister" class="primary compact" data-i18n>Регистрация</button><div id="account" hidden><button id="accountName" class="quiet"></button><button id="logout" data-i18n>Выйти</button></div></div><nav role="tablist" aria-label="Разделы"><button role="tab" data-tab="parse" aria-selected="true" data-i18n>Адреса</button><button role="tab" data-tab="tokens" aria-selected="false" data-i18n>Детали адреса</button><button role="tab" data-tab="queue" aria-selected="false"><span data-i18n>На проверку</span> <span id="qcount" class="count">0</span></button><button role="tab" data-tab="errors" aria-selected="false" data-i18n>Ошибки и исправления</button></nav></header>
+<main><div class="hero"><div><span class="eyebrow" data-i18n>Порядок начинается с адреса</span><h1 id="title">Каждый адрес.<br><span>На своём месте.</span></h1><p id="subtitle" data-i18n>Добавьте адреса — мы разложим всё по полочкам.<br>Вам останется проверить и сохранить.</p><div class="hero-steps" aria-label=""><span data-i18n>Добавьте</span><span data-i18n>Проверьте</span><span data-i18n>Сохраните</span></div></div><div class="hero-card" aria-hidden="true"><div class="pin"><svg viewBox="0 0 32 32" fill="none"><path d="M25 13c0 7-9 15-9 15S7 20 7 13a9 9 0 1 1 18 0Z" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="13" r="3" stroke="currentColor" stroke-width="1.8"/></svg></div><div class="sample-city">Алматы</div><div class="sample-address" data-i18n>Улица · Дом · Квартира</div><div class="sample-check"><span>✓</span> <span data-i18n>Всё на своих местах</span></div></div></div>
+<section id="parse" role="tabpanel"><div class="panel input-panel"><div class="sectionhead"><h2 data-i18n>Ваши адреса</h2><span class="spacer"></span><button id="example" class="quiet" data-i18n>Попробовать пример</button></div><textarea id="input" data-i18n-placeholder="Каждый адрес с новой строки. Например: Алматы, Абая 25, кв 12" placeholder="Каждый адрес с новой строки. Например: Алматы, Абая 25, кв 12" data-i18n-aria="Адреса" aria-label="Адреса"></textarea><div class="input-bottom"><div id="drop" class="drop"><label class="btn" for="file" tabindex="0" data-i18n>↑ Загрузить файл</label><input type="file" id="file" accept=".json,.txt" hidden><span class="muted" data-i18n>или перетащите сюда</span></div><span class="spacer"></span><button id="clear" class="quiet" data-i18n>Очистить</button><button class="primary" id="run" data-i18n>Обработать адреса →</button></div><div class="bar statusbar"><div id="status" role="status" aria-live="polite" data-i18n>Добавьте адреса, чтобы начать.</div><button id="retry" hidden data-i18n>Повторить</button></div></div>
+<div class="kpis"><div class="kpi"><span data-i18n>Всего адресов</span><b id="total">0</b></div><div class="kpi"><span data-i18n title="Эвристическая оценка разбора, не статистическая вероятность правильного ответа.">Средня оценка разбора</span><b id="average">—</b></div><div class="kpi"><span data-i18n>Нужна проверка</span><b id="uncertain">0</b></div><div class="kpi"><span data-i18n>Заполнено</span><b id="filled">—</b></div></div>
+<div class="panel"><div class="sectionhead"><div><h2 data-i18n>Результаты</h2><p class="muted small" data-i18n>Нажмите на поле, чтобы внести изменения.</p></div><span class="spacer"></span><button id="undo" class="quiet" data-i18n>Отменить изменения</button></div><div class="bar filters"><input id="search" type="search" data-i18n-placeholder="Найти адрес" placeholder="Найти адрес" data-i18n-aria="Поиск адресов" aria-label="Поиск адресов"><select id="sort" data-i18n-aria="Сортировка" aria-label="Сортировка"><option value="original" data-i18n>По порядку</option><option value="asc" data-i18n>Сначала неточные</option><option value="desc" data-i18n>Сначала точные</option></select><label><input type="checkbox" id="onlylow"> <span data-i18n>Требуют проверки</span></label><span class="spacer"></span><label class="threshold"><span data-i18n>Порог проверки</span> <input id="threshold" type="range" min="0" max="1" step="0.05" value="0.6"> <output id="thresholdValue">0.60</output></label></div><div class="coverage" id="coverage" hidden></div><div id="validationSummary" class="validation-summary" role="status" hidden></div><div class="legend" id="legend"></div><div class="wrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div><div class="bar"><button id="prev" data-i18n>← Назад</button><span id="page" class="muted small"></span><button id="next" data-i18n>Далее →</button><span class="spacer"></span></div><div class="bar export-bar"><button id="dlJson" disabled data-i18n>Скачать JSON</button><button id="dlCsv" disabled data-i18n>Скачать CSV</button><button id="copy" class="quiet" disabled data-i18n>Копировать</button><label class="muted small"><input id="exportReviewed" type="checkbox"> <span data-i18n>С отметкой о проверке</span></label></div></div></section>
+<section id="tokens" role="tabpanel" hidden><div class="panel"><div class="sectionhead"><div><h2 data-i18n>Подсветка токенов</h2><p class="muted small" data-i18n>Один цвет — одно поле. Нажмите на значение справа, чтобы исправить его.</p></div><span class="spacer"></span><button id="tokenDemo" data-i18n>Показать пример</button><button id="tokenUndo" class="quiet" data-i18n>Отменить изменения адреса</button></div><div class="bar"><button id="tokenPrev" data-i18n>← Предыдущий</button><select id="recordSelect" data-i18n-aria="Выбрать адрес" aria-label="Выбрать адрес"></select><button id="tokenNext" data-i18n>Следующий →</button></div><div class="legend" id="tokenLegend"></div><div id="tokenDetail"></div></div></section>
+<section id="queue" role="tabpanel" hidden><div class="panel"><div class="sectionhead"><h2 data-i18n>Неуверенные сначала</h2><select id="queueReason" data-i18n-aria="Причина проверки" aria-label="Причина проверки"><option value="all" data-i18n>Все причины</option><option value="missing" data-i18n>Не хватает полей</option><option value="geo" data-i18n>Сомнения в географии</option><option value="postal" data-i18n>Почтовый индекс</option><option value="ambiguous" data-i18n>Неоднозначная запись</option></select><span class="spacer"></span><label><input id="queueAll" type="checkbox"> <span data-i18n>Показать все</span></label></div><p class="muted" data-i18n>Проверьте выделенные адреса и при необходимости исправьте поля.</p><div id="progressText" class="small"></div><progress id="progress" value="0" max="1"></progress><div id="queueDetail"></div><div class="bar"><button id="queueBack" data-i18n>← Назад</button><button id="confirm" class="primary" data-i18n>Подтвердить</button><button id="fixConfirm" data-i18n>Сохранить и подтвердить</button><button id="skip" class="quiet" data-i18n>Пропустить →</button></div><div class="bar export-bar"><button id="queueJson" disabled data-i18n>Скачать JSON</button><button id="queueCsv" disabled data-i18n>Скачать CSV</button><label class="muted small"><input type="checkbox" id="queueReviewed"> <span data-i18n>С отметкой о проверке</span></label></div></div></section>
+<section id="errors" role="tabpanel" hidden><div class="panel"><div class="sectionhead"><div><h2 data-i18n>Ошибки и что мы с ними сделали</h2><p class="muted small" data-i18n>Реальные примеры, исправления и результаты проверок. Без выдуманных метрик.</p></div></div><div class="bar filters"><input id="errorSearch" type="search" data-i18n-placeholder="Найти пример" placeholder="Найти пример" data-i18n-aria="Поиск примеров" aria-label="Поиск примеров"><select id="errorCategory" data-i18n-aria="Категория" aria-label="Категория"></select></div><div class="wrap errors-wrap"><table class="errors-table"><thead><tr><th data-i18n>Пример</th><th data-i18n>Проблема</th><th data-i18n>Что исправили</th><th data-i18n>Результат проверки</th><th></th></tr></thead><tbody id="errorsBody"></tbody></table></div><p class="muted small" data-i18n>Кнопка проверки отправляет исходный пример на обработку. Результаты в таблице подтверждены автоматическими проверками.</p></div></section>
+<footer><a class="footer-brand" href="#">jana post.</a><span data-i18n>Ближе к вам. Точнее до двери.</span><span class="spacer"></span><span>© Jana Post 2026</span></footer></main>
+<dialog id="authDialog" aria-labelledby="authTitle"><button id="closeAuth" class="close-auth" data-i18n-aria="Закрыть" aria-label="Закрыть">×</button><div class="auth-brand">jana post.</div><h2 id="authTitle"></h2><p id="authSubtitle" class="muted"></p><form id="authForm"><div id="nameGroup"><label for="authName" data-i18n>Ваше имя</label><input id="authName" name="name" autocomplete="name" maxlength="80"></div><label for="authEmail" data-i18n>Электронная почта</label><input id="authEmail" name="email" type="email" autocomplete="email" required maxlength="254"><label for="authPassword" data-i18n>Пароль</label><div class="password-wrap"><input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required><button type="button" id="showPassword" data-i18n-aria="Показать пароль" aria-label="Показать пароль">◉</button></div><p id="passwordHint" class="muted small" data-i18n>Не менее 10 символов.</p><div id="authError" role="alert"></div><button class="primary" id="authSubmit" type="submit"></button></form><div class="auth-switch"><span id="authSwitchText"></span> <button id="authSwitch" class="quiet"></button></div></dialog>
+<div id="toast" role="status" hidden></div><script id="errors-data" type="application/json">/*ERRORS*/</script><script>/*SCRIPT*/</script></body></html>
+
+=== app\static\quality.js ===
+function fieldLabel(row,key){
+  if(key==='city'&&row.review?.locality_kind==='village')return translateText('Населённый пункт');
+  if(key==='street_name'&&row.street_type==='квартал')return translateText('Квартал');
+  if(key==='street_name'&&row.street_type==='микрорайон')return translateText('Микрорайон');
+  return translateText(FIELDS.find(([name])=>name===key)?.[1]||key);
+}
+function reviewIssues(row){
+  const current=(row.review?.issues||[]).filter(issue=>Object.entries(issue.observed||{}).every(([key,value])=>(row[key]??null)===(value??null)));
+  const seen=new Set(current.map(issue=>issue.code));
+  const local=(code,field,ru,kk,hintRu,hintKk)=>{if(!seen.has(code))current.push({code,field,severity:'warning',message:{ru,kk},suggestion:{ru:hintRu,kk:hintKk},candidates:[]});};
+  if(!row.house)local('missing_house','house','Не найден номер дома.','Үй нөмірі табылмады.','Укажите номер дома по исходной строке.','Үй нөмірін бастапқы жол бойынша енгізіңіз.');
+  if(!row.street_name&&!row.living_area)local('missing_street','street_name','Не найдена улица или жилмассив.','Көше не тұрғын алап табылмады.','Уточните название улицы или жилмассива.','Көше не тұрғын алап атауын нақтылаңыз.');
+  if(!row.city)local('missing_city','city','Не найден город.','Қала табылмады.','Уточните город: это поможет проверить район и область.','Қаланы нақтылаңыз: бұл аудан мен облысты тексеруге көмектеседі.');
+  if(row.postal_code&&!/^(?:[0-9]{6}|[a-z][0-9]{2}[a-z][0-9][a-z][0-9])$/i.test(row.postal_code))local('invalid_postal','postal_code','Необычный формат почтового индекса.','Пошта индексінің пішімі ерекше.','Проверьте индекс; не дополняйте его случайными цифрами.','Индексті тексеріңіз; кездейсоқ сан қоспаңыз.');
+  if(confidence(row)<threshold&&!current.some(issue=>issue.severity==='warning'))local('low_confidence',null,'Уверенность ниже выбранного порога.','Сенімділік таңдалған шектен төмен.','Сверьте все поля и подтвердите результат вручную.','Барлық өрісті салыстырып, нәтижені қолмен растаңыз.');
+  return current;
+}
+function recordChecks(row){return reviewIssues(row).filter(issue=>issue.severity==='warning').map(issue=>issue.message[language]||issue.message.ru);}
+function needsReview(row){return confidence(row)<threshold||reviewIssues(row).some(issue=>issue.severity==='warning');}
+function matchesQueueReason(row){
+  const reason=$('queueReason')?.value||'all';
+  return reason==='all'||reviewIssues(row).some(issue=>reason==='missing'?issue.code.startsWith('missing_'):reason==='geo'?issue.code.includes('geo')||issue.code.includes('city')||issue.code.includes('province'):reason==='postal'?issue.code.includes('postal'):issue.code.includes('conflict')||issue.code.includes('multiple')||issue.code.includes('overlap')||issue.code.includes('unassigned')||issue.code.includes('unbound'));
+}
+function renderChecks(target,row){
+  target.textContent='';const issues=reviewIssues(row);target.hidden=!issues.length;
+  if(!issues.length)return;
+  target.append(create('strong',translateText('Почему нужна проверка')));
+  const list=create('ul');
+  for(const issue of issues){
+    const item=create('li',undefined,issue.severity==='info'?'review-info':'review-warning');
+    item.append(create('strong',issue.message[language]||issue.message.ru),create('p',issue.suggestion[language]||issue.suggestion.ru));
+    if(issue.candidates?.length){const choices=create('div',undefined,'review-choices');for(const candidate of issue.candidates){const button=create('button',candidate.label);button.type='button';button.onclick=()=>{for(const [key,value] of Object.entries(candidate.changes||{}))if(FIELDS.some(([field])=>field===key))row[key]=value;const index=rows.indexOf(row);reviewed.delete(index);if(activeTab==='queue'){$('queueReason').value='all';queueIndex=Math.max(0,queueItems().filter(i=>!reviewed.has(i)).indexOf(index));}refresh();toast('Вариант применён. Проверьте и подтвердите.');};choices.append(button);}item.append(choices);}
+    list.append(item);
+  }
+  target.append(list);
+}
+function updateValidationSummary(){
+  const count=rows.filter(row=>recordChecks(row).length).length;
+  $('validationSummary').hidden=!count;
+  $('validationSummary').textContent=language==='kk'?`${count} мекенжайды тексеріңіз. Мәліметтер мен ескертулер мекенжай карточкасында көрсетілген.`:`Проверьте адреса: ${count}. Подсказки и замечания доступны в деталях каждого адреса.`;
+}
+const ERROR_CASES=JSON.parse($('errors-data').textContent);
+function renderErrors(){
+  const previous=$('errorCategory').value;
+  $('errorCategory').textContent='';
+  const all=create('option',translateText('Все категории'));all.value='';$('errorCategory').append(all);
+  for(const key of new Set(ERROR_CASES.map(entry=>entry.category.ru))){const entry=ERROR_CASES.find(item=>item.category.ru===key),option=create('option',entry.category[language]);option.value=key;$('errorCategory').append(option);}
+  $('errorCategory').value=previous;
+  const category=$('errorCategory').value,query=$('errorSearch').value.toLocaleLowerCase();
+  $('errorsBody').textContent='';
+  for(const entry of ERROR_CASES){
+    const text=[entry.example,entry.category[language],entry.before[language],entry.fix[language],...Object.values(entry.expected)].join(' ').toLocaleLowerCase();
+    if((category&&category!==entry.category.ru)||(query&&!text.includes(query)))continue;
+    const row=create('tr'),first=create('td');first.append(create('strong',entry.category[language]),create('p',entry.example));
+    const result=create('td'),list=create('dl',undefined,'expected-fields');
+    Object.entries(entry.expected).forEach(([key,value])=>{if(key==='confidence'){list.append(create('dt',translateText('Уверенность')),create('dd',`${Math.round(value*100)}%`));}else list.append(create('dt',fieldLabel(entry.expected,key)),create('dd',value??'—'));});
+    result.append(create('span',translateText('Проверено тестом'),'badge good'),list);
+    const action=create('td'),button=create('button',translateText('Проверить пример'));button.onclick=()=>{$('input').value=entry.example;tab('parse');run();};action.append(button);
+    row.append(first,create('td',entry.before[language]),create('td',entry.fix[language]),result,action);$('errorsBody').append(row);
+  }
+  if(!$('errorsBody').children.length){const row=create('tr'),cell=create('td',translateText('Совпадений не найдено'),'empty');cell.colSpan=5;row.append(cell);$('errorsBody').append(row);}
+}
+$('errorSearch').oninput=$('errorCategory').onchange=renderErrors;
+$('tokenDemo').onclick=async()=>{$('input').value='66квартал 12дом 69квартира';await run();if(rows.length)tab('tokens');};
+$('tokenUndo').onclick=()=>{if(rows[tokenIndex])revert(tokenIndex);};
+$('queueJson').onclick=()=>$('dlJson').click();$('queueCsv').onclick=()=>$('dlCsv').click();
+$('queueReviewed').onchange=()=>{$('exportReviewed').checked=$('queueReviewed').checked;};
+$('exportReviewed').onchange=()=>{$('queueReviewed').checked=$('exportReviewed').checked;};
+
+$('queueReason').onchange=()=>{queueIndex=0;renderQueue();};
+
+=== app\static\styles.css ===
+:root{--bg:#fff;--panel:#fff;--ink:#202223;--muted:#7a7e83;--line:#eceeef;--green:#198d27;--soft:#f7f8f8;--c-province:#e3edfa;--c-city:#e0f0e3;--c-district:#faf0d5;--c-living_area:#eee6f6;--c-street_type:#fbe5e2;--c-street_name:#fcebd7;--c-house:#ddf1ed;--c-apartment:#edf1d7;--c-entrance:#f6e4ef;--c-floor:#e7ebf4;--c-landmark:#eee6df;color-scheme:light}
+:root[data-theme=dark]{--bg:#171819;--panel:#1e2021;--ink:#f3f4f4;--muted:#a5a9ac;--line:#323536;--green:#70d27e;--soft:#262829;--c-province:#27465f;--c-city:#21503a;--c-district:#5b4c1c;--c-living_area:#4a3560;--c-street_type:#613531;--c-street_name:#68451c;--c-house:#1f524f;--c-apartment:#4d5220;--c-entrance:#612d49;--c-floor:#37415a;--c-landmark:#4f3f31;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased}button,input,textarea,select{font:inherit}button,.btn,select,input[type=search]{border:1px solid var(--line);border-radius:9px;padding:9px 14px;background:var(--panel);color:var(--ink)}button,.btn{cursor:pointer;transition:background .16s}button:hover,.btn:hover{background:var(--soft)}button:disabled{opacity:.4;cursor:default}button.primary{background:var(--green);border-color:var(--green);color:white;padding:11px 22px;font-weight:600}button.primary:hover{filter:brightness(.95)}:root[data-theme=dark] button.primary{color:#111c12}.quiet{border-color:transparent;background:transparent}.compact{padding:8px 17px!important}.icon-button{border:0;font-size:22px;width:38px;height:38px;padding:0}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[contenteditable]:focus-visible,a:focus-visible,.btn:focus-visible{outline:2px solid var(--green);outline-offset:3px}a{color:inherit;text-decoration:none}header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);z-index:5}.top{max-width:1320px;margin:auto;display:flex;align-items:center;gap:13px;padding:22px 36px}.brand{display:flex;align-items:center;gap:8px;font-size:26px;font-weight:750;letter-spacing:-1.4px;color:var(--green)}.brand svg{width:28px;height:33px}.brand-dot{color:var(--ink)}.product{border-left:1px solid var(--line);margin-left:10px;padding-left:22px;color:var(--muted);font-size:15px}.spacer{flex:1}#language{border:0;background:transparent;padding:5px;font-size:12px;font-weight:600}#account{display:flex;align-items:center;gap:6px}nav{max-width:1320px;margin:auto;display:flex;gap:24px;padding:0 36px;overflow:auto}nav button{white-space:nowrap;padding:12px 2px 16px;background:transparent;border:0;border-bottom:2px solid transparent;border-radius:0;color:var(--muted)}nav button[aria-selected=true]{border-color:var(--green);color:var(--ink);font-weight:600}.count{display:inline-flex;align-items:center;justify-content:center;background:var(--soft);border-radius:6px;min-width:20px;padding:0 4px;font-size:10px;margin-left:4px}main{max-width:1320px;margin:auto;padding:0 36px 25px;min-width:0}.hero{padding:60px 0 54px;display:flex;align-items:center;justify-content:space-between;gap:36px}.eyebrow{font-size:12px;color:var(--green);font-weight:600}.hero h1{font-size:clamp(34px,4.5vw,58px);font-weight:650;line-height:1.12;letter-spacing:-2.7px;margin:16px 0}.hero h1 span{color:var(--muted);font-weight:500}.hero p{font-size:15px;line-height:1.8;color:var(--muted);margin:18px 0 0}.hero-card{width:265px;flex-shrink:0;border:1px solid var(--line);border-radius:18px;padding:24px;transform:rotate(5deg);margin-right:48px;box-shadow:0 14px 40px #00000005;background:var(--panel)}.pin{width:44px;height:44px;background:var(--soft);border-radius:12px;padding:7px;color:var(--green)}.pin svg{width:30px;height:30px}.sample-city{font-size:23px;letter-spacing:-.5px;font-weight:600;margin-top:20px}.sample-address{font-size:12px;color:var(--muted);margin-top:3px}.sample-check{border-top:1px solid var(--line);padding-top:14px;margin-top:20px;font-size:11px}.sample-check>span:first-child{color:var(--green);margin-right:6px}.panel{padding:25px;border:1px solid var(--line);border-radius:14px;background:var(--panel);margin-bottom:24px;min-width:0}.sectionhead{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px}h2{font-size:19px;letter-spacing:-.4px;margin:0;font-weight:600}.muted{color:var(--muted)}.small{font-size:12px}.sectionhead p{margin:5px 0 0}textarea{display:block;width:100%;min-height:130px;resize:vertical;border:1px solid var(--line);border-radius:10px;padding:17px;background:var(--soft);color:var(--ink);font:inherit;line-height:1.8}textarea::placeholder{color:var(--muted)}.input-bottom,.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}.drop{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}.drop.over{outline:2px dashed var(--green);outline-offset:6px}.drop .btn{border:0;padding-left:0;font-size:13px}.statusbar{margin-top:12px;min-height:18px}#status{font-size:11px;color:var(--muted)}#status.err,#authError{color:#c23f35}.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;margin-bottom:30px}.kpi{padding:19px 24px;border-right:1px solid var(--line)}.kpi:last-child{border:0}.kpi span{font-size:12px;color:var(--muted)}.kpi b{display:block;margin-top:3px;font-size:28px;font-weight:550;letter-spacing:-1px}.filters{font-size:12px}.filters input[type=search]{min-width:210px}.threshold{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)}input[type=range]{width:80px;accent-color:var(--green)}input[type=checkbox]{accent-color:var(--green)}.legend{display:flex;gap:7px;flex-wrap:wrap;margin:19px 0 14px}.chip{font-size:10px;border:0;border-radius:5px;padding:3px 8px}.chip[aria-pressed=false]{opacity:.3}.wrap{overflow:auto;max-height:550px;border:1px solid var(--line);border-radius:9px}table{width:100%;min-width:1550px;border-collapse:collapse}th,td{border-bottom:1px solid var(--line);padding:11px 12px;font-size:12px;text-align:left;vertical-align:top}th{position:sticky;top:0;z-index:1;background:var(--soft);font-weight:500;color:var(--muted);white-space:nowrap}td.raw{min-width:300px;line-height:2.1}td.f{min-width:90px}td.f:empty:before{content:'—';color:var(--muted)}td:first-child button{display:block;font-size:11px;padding:2px 8px;border:0;color:var(--muted)}.edited{box-shadow:inset 0 -2px var(--green)}mark{padding:2px;border-radius:3px;color:inherit}.badge{display:inline-block;padding:3px 9px;border-radius:7px;font-size:11px;white-space:nowrap}.good{color:#267139;background:#eaf6ed}.medium{color:#886b24;background:#faf4e5}.low{color:#a54539;background:#fbeeea}.empty{padding:45px 15px;text-align:center;color:var(--muted)}.export-bar{border-top:1px solid var(--line);padding-top:18px}.detail{display:grid;grid-template-columns:1.15fr 1fr;gap:35px;margin-top:25px}.bigraw{font-size:25px;line-height:2;overflow-wrap:anywhere}.fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}.field{padding:10px 12px;border:1px solid var(--line);border-radius:8px;min-width:0}.field label{display:block;font-size:11px;color:var(--muted)}.field div{overflow-wrap:anywhere}.field input{width:100%;min-width:0;border:0;background:transparent;color:var(--ink);padding:6px 0}.tag{display:inline-block;font-size:11px;color:var(--green);margin-top:9px}progress{width:100%;height:5px;accent-color:var(--green)}footer{display:flex;align-items:center;gap:20px;font-size:11px;color:var(--muted);padding:25px 0;border-top:1px solid var(--line);margin-top:36px}.footer-brand{font-size:18px;color:var(--green);font-weight:700;letter-spacing:-.8px}dialog{max-width:430px;width:calc(100% - 32px);padding:38px;border:1px solid var(--line);border-radius:20px;background:var(--panel);color:var(--ink);box-shadow:0 25px 90px #0002}dialog::backdrop{background:#10182055;backdrop-filter:blur(4px)}.close-auth{position:absolute;right:12px;top:10px;border:0;font-size:24px;background:transparent;color:var(--muted)}.auth-brand{font-size:25px;font-weight:750;color:var(--green);letter-spacing:-1px;margin-bottom:25px}dialog h2{font-size:27px;letter-spacing:-.8px}dialog p{font-size:13px}#authForm label{display:block;font-size:12px;font-weight:500;margin:16px 0 7px}#authForm input{display:block;width:100%;border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:9px;padding:12px}#authForm .primary{width:100%;margin-top:16px}.password-wrap{position:relative}.password-wrap input{padding-right:45px!important}.password-wrap button{position:absolute;right:4px;top:5px;border:0;background:transparent;color:var(--muted);padding:6px 10px}#authError{font-size:12px;min-height:20px}.auth-switch{font-size:12px;text-align:center;margin-top:15px}.auth-switch button{color:var(--green);padding:3px}.auth-loading{opacity:.6}#toast{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);padding:12px 20px;background:var(--ink);color:var(--bg);border-radius:12px;z-index:10;max-width:90%;font-size:13px}[hidden]{display:none!important}#run.busy:before{content:'';display:inline-block;width:11px;height:11px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;margin-right:8px;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:850px){.top{padding:18px 20px;gap:8px}.product{margin-left:2px;padding-left:12px}.hero-card{margin-right:12px;width:225px}.hero{gap:20px}main{padding:0 20px 20px}nav{padding:0 20px}.detail{grid-template-columns:1fr}.threshold{width:100%}.input-bottom>.spacer{display:none}.input-bottom>.drop{width:100%}.input-bottom>#clear{margin-left:auto}}@media(max-width:600px){.top{flex-wrap:wrap;padding:15px 16px}.brand{font-size:23px}.brand svg{width:24px}.product{display:none}#openRegister{padding:7px 9px!important;font-size:11px}#openLogin{padding:7px;font-size:12px}#language{font-size:11px}.icon-button{width:27px}.hero{padding:36px 0 30px}.hero-card{display:none}.hero h1{letter-spacing:-1.5px;font-size:40px}.hero p{font-size:13px}main{padding:0 16px 20px}nav{padding:0 16px;gap:24px}nav button{font-size:12px}.panel{padding:17px}.kpis{grid-template-columns:1fr 1fr}.kpi{padding:16px}.kpi:nth-child(2){border-right:0}.kpi:nth-child(-n+2){border-bottom:1px solid var(--line)}.kpi b{font-size:25px}.kpi span{font-size:10px}.filters input[type=search]{width:100%}.fields{grid-template-columns:1fr}footer{gap:12px;flex-wrap:wrap}footer .spacer{display:none}dialog{padding:30px 25px}#account{gap:0}#accountName{max-width:95px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px}#logout{font-size:11px;padding:5px}}@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.bar select{max-width:100%}#recordSelect{flex:1;min-width:100px;width:0}.detail>*{min-width:0}
+
+@media(max-width:900px){
+  .top{gap:8px}
+  .hero{gap:20px}
+  .hero-card{margin-right:8px}
+  .panel{min-width:0}
+  .wrap,.errors-wrap{max-width:100%;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+}
+@media(max-width:600px){
+  html,body{max-width:100%;overflow-x:hidden}
+  .top{padding:12px 14px;gap:6px}
+  .brand{flex:none}
+  .top>.spacer{display:none}
+  #language{margin-left:auto}
+  #openLogin,#openRegister,#account,#theme,#language{flex:0 0 auto}
+  nav{gap:18px;scrollbar-width:none;overscroll-behavior-x:contain}
+  nav::-webkit-scrollbar{display:none}
+  main{padding-right:12px;padding-left:12px}
+  .hero{padding:30px 0 24px}
+  .hero h1{font-size:clamp(32px,9vw,40px);overflow-wrap:anywhere}
+  .panel{padding:14px;border-radius:11px}
+  .sectionhead{align-items:flex-start;gap:9px}
+  .sectionhead>.spacer{display:none}
+  .sectionhead>button{max-width:100%;white-space:normal}
+  .bar{align-items:stretch;gap:8px}
+  .bar>*{min-width:0;max-width:100%}
+  .bar button{min-height:42px}
+  .input-bottom>.spacer,.export-bar>.spacer{display:none}
+  .input-bottom>button,.export-bar>button{flex:1 1 auto}
+  .filters{align-items:stretch}
+  .filters input[type=search],.filters select{width:100%;min-width:0}
+  .filters>label:not(.threshold){flex:1 1 100%}
+  .threshold{display:grid;grid-template-columns:auto minmax(50px,1fr) auto;gap:8px}
+  .threshold input[type=range]{width:100%;min-width:0}
+  .kpi{min-width:0;padding:13px 10px;overflow-wrap:anywhere}
+  .kpi b{font-size:clamp(20px,7vw,25px)}
+  .detail{gap:20px}
+  .bigraw{font-size:20px;line-height:1.7}
+  .fields{grid-template-columns:minmax(0,1fr)}
+  .expected-fields{grid-template-columns:minmax(0,auto) minmax(0,1fr)}
+  .wrap,.errors-wrap{width:100%;max-width:calc(100vw - 54px);overflow:auto;touch-action:pan-x pan-y}
+  footer{align-items:flex-start}
+  dialog{width:calc(100vw - 24px);max-width:430px;max-height:calc(100dvh - 24px);overflow:auto;padding:28px 20px}
+}
+@media(max-width:380px){
+  .brand{font-size:20px;letter-spacing:-1px}
+  .brand svg{width:21px;height:28px}
+  .top{gap:4px}
+  #openLogin{padding:6px 5px;font-size:11px}
+  #openRegister{padding:6px 7px!important;font-size:10px}
+  .kpi span{font-size:9px}
+  .panel{padding:11px}
+  .wrap,.errors-wrap{max-width:calc(100vw - 46px)}
+}
+:root{--bg:#fafbfc;--line:#e1e5e8;--soft:#f4f6f7}:root[data-theme=dark]{--bg:#171819;--line:#383d40;--soft:#272b2d}
+header{background:var(--panel)}body,header,.panel,.kpis,.hero-card,button,textarea,input,select,dialog,footer{transition:background-color .24s ease,color .24s ease,border-color .24s ease,box-shadow .24s ease}
+.hero{padding:43px 0 34px;margin-bottom:28px;border-bottom:1px solid var(--line)}.hero h1{font-size:clamp(34px,4.2vw,53px)}.hero .eyebrow{display:inline-block;background:var(--panel);border:1px solid var(--line);padding:4px 10px;border-radius:20px;font-size:11px}
+.hero-steps{display:flex;align-items:center;flex-wrap:wrap;gap:18px;margin-top:24px;counter-reset:steps}.hero-steps>span{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}.hero-steps>span:before{counter-increment:steps;content:counter(steps);display:grid;place-items:center;width:20px;height:20px;border:1px solid var(--line);background:var(--panel);border-radius:50%;color:var(--green);font-size:10px}
+.hero-card{box-shadow:0 12px 30px #17242e08;transition:transform .3s ease,box-shadow .3s ease,background-color .24s ease,border-color .24s ease;animation:card-intro .6s ease both}.hero-card:hover{transform:rotate(1deg) translateY(-3px);box-shadow:0 16px 36px #17242e10}.sample-check{border-color:var(--line)}
+.panel{box-shadow:0 3px 14px #14232f04}.panel>.sectionhead{padding-bottom:17px;border-bottom:1px solid var(--line)}.kpis{background:var(--panel);box-shadow:0 3px 14px #14232f03}.kpi b{transition:color .24s ease}.input-panel{border-top:2px solid var(--green)}.export-bar{background:var(--soft);padding:15px;border:1px solid var(--line);border-radius:9px}.filters{padding-bottom:17px;border-bottom:1px solid var(--line)}button,.btn{transition:background-color .18s ease,color .18s ease,border-color .18s ease,transform .18s ease,box-shadow .18s ease}button:not(:disabled):hover,.btn:hover{transform:translateY(-1px)}button:not(:disabled):active,.btn:active{transform:translateY(0)}nav button:hover{transform:none!important}nav button{transition:color .2s ease,border-color .2s ease}section[role=tabpanel]:not([hidden]){animation:section-enter .28s ease both}dialog[open]{animation:dialog-enter .22s ease both}.chip{transition:opacity .18s ease,transform .18s ease}.fields .field{transition:border-color .2s ease,box-shadow .2s ease}.fields .field:focus-within{border-color:var(--green)}
+@keyframes section-enter{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}@keyframes card-intro{from{opacity:0;transform:rotate(8deg) translateY(8px)}to{opacity:1;transform:rotate(5deg) translateY(0)}}@keyframes dialog-enter{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:600px){.hero{padding:30px 0 25px;margin-bottom:22px}.hero h1{font-size:37px}.hero-steps{gap:13px;margin-top:20px}.hero-steps>span{font-size:10px}.panel>.sectionhead{padding-bottom:13px}.export-bar{padding:11px}.hero .eyebrow{font-size:10px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+@media(max-width:600px){#accountName{font-size:0;max-width:28px;width:28px;height:28px;padding:0;border-radius:50%;background:var(--soft);color:var(--green)}#accountName:before{content:attr(data-initial);font-size:12px;font-weight:600}#account{gap:5px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
+.validation-summary,.record-checks{border:1px solid #ead7a9;background:#fffaf0;color:#806328;border-radius:9px;padding:12px 14px;font-size:12px;margin:16px 0}.record-checks ul{padding-left:18px;margin:6px 0 0}.record-checks li+li{margin-top:4px}:root[data-theme=dark] .validation-summary,:root[data-theme=dark] .record-checks{background:#302a1e;border-color:#625333;color:#ead5a0}.field small{display:block;font-size:10px;margin-top:5px}.errors-table{min-width:1120px}.errors-table td{min-width:160px;max-width:290px;line-height:1.7}.errors-table td:first-child{min-width:250px}.errors-table td:last-child{min-width:130px}.errors-table p{overflow-wrap:anywhere}.expected-fields{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:11px;margin:10px 0 0}.expected-fields dt{color:var(--muted)}.expected-fields dd{margin:0;overflow-wrap:anywhere}.errors-wrap{max-height:680px}
+.record-checks li{padding:7px 0}.record-checks li p{margin:4px 0;font-size:11px;opacity:.85}.review-info{list-style-type:circle;color:var(--muted)}.review-choices{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0}.review-choices button{font-size:11px;padding:5px 9px}#queueReason{max-width:100%;font-size:12px}:root{--c-postal_code:#e5e8fb}:root[data-theme=dark]{--c-postal_code:#333b63}
+:root{--c-building:#dceef7;--c-structure:#ede4f6}:root[data-theme=dark]{--c-building:#263e4c;--c-structure:#453353}
+
+=== app\auth.py ===
+"""Локальные аккаунты и сессии; разбор адресов не зависит от авторизации."""
+import hashlib
+import hmac
+import os
+import re
+import secrets
+import sqlite3
+import threading
+import time
+from collections import defaultdict
+from contextlib import contextmanager
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request, Response
+from pydantic import BaseModel, Field
+
+router = APIRouter(prefix='/auth', tags=['Account'])
+DB_PATH = Path(os.environ.get('JANA_AUTH_DB', str(Path(__file__).resolve().parent.parent / 'data' / 'accounts.sqlite3')))
+COOKIE = 'jana_session'
+SESSION_TTL = 7 * 24 * 3600
+ITERATIONS = 600_000
+_attempts = defaultdict(list)
+_lock = threading.Lock()
+_DUMMY_SALT = secrets.token_hex(16)
+
+
+@contextmanager
+def database():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        with db:
+            db.execute('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password_hash TEXT NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires REAL NOT NULL)')
+            yield db
+    finally:
+        db.close()
+
+
+class Credentials(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=10, max_length=128)
+
+
+class Registration(Credentials):
+    name: str = Field(min_length=1, max_length=80)
+
+
+def check_origin(request):
+    origin = request.headers.get('origin')
+    expected = f'{request.url.scheme}://{request.url.netloc}'
+    if origin and origin.rstrip('/') != expected:
+        raise HTTPException(403, 'origin_not_allowed')
+
+
+def email_key(value):
+    value = value.strip().lower()
+    if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value):
+        raise HTTPException(400, 'invalid_email')
+    return value
+
+
+def password_hash(password, salt):
+    return hashlib.pbkdf2_hmac('sha256', password.encode(), bytes.fromhex(salt), ITERATIONS).hex()
+
+
+def rate_limit(request):
+    key = request.client.host if request.client else 'local'
+    now = time.monotonic()
+    with _lock:
+        recent = [t for t in _attempts[key] if t > now - 900]
+        if len(recent) >= 20:
+            raise HTTPException(429, 'too_many_attempts')
+        _attempts[key] = recent + [now]
+
+
+def start_session(db, user, request, response):
+    old = request.cookies.get(COOKIE)
+    if old:
+        db.execute('DELETE FROM sessions WHERE token_hash=?', (hashlib.sha256(old.encode()).hexdigest(),))
+    token = secrets.token_urlsafe(32)
+    db.execute('DELETE FROM sessions WHERE expires < ?', (time.time(),))
+    db.execute('INSERT INTO sessions VALUES (?, ?, ?)', (hashlib.sha256(token.encode()).hexdigest(), user[0], time.time() + SESSION_TTL))
+    response.set_cookie(COOKIE, token, max_age=SESSION_TTL, httponly=True, secure=request.url.scheme == 'https', samesite='strict', path='/')
+    response.headers['Cache-Control'] = 'no-store'
+    return {'user': {'id': user[0], 'name': user[1], 'email': user[2]}}
+
+
+@router.post('/register', status_code=201)
+def register(data: Registration, request: Request, response: Response):
+    check_origin(request)
+    rate_limit(request)
+    email = email_key(data.email)
+    name = data.name.strip()
+    if not name:
+        raise HTTPException(400, 'invalid_name')
+    salt = secrets.token_hex(16)
+    hashed = password_hash(data.password, salt)
+    with database() as db:
+        try:
+            cursor = db.execute('INSERT INTO users (name,email,salt,password_hash) VALUES (?,?,?,?)', (name, email, salt, hashed))
+        except sqlite3.IntegrityError:
+            raise HTTPException(409, 'email_exists')
+        return start_session(db, (cursor.lastrowid, name, email), request, response)
+
+
+@router.post('/login')
+def login(data: Credentials, request: Request, response: Response):
+    check_origin(request)
+    rate_limit(request)
+    email = email_key(data.email)
+    with database() as db:
+        user = db.execute('SELECT id,name,email,salt,password_hash FROM users WHERE email=?', (email,)).fetchone()
+        candidate = password_hash(data.password, user[3] if user else _DUMMY_SALT)
+        if not user or not hmac.compare_digest(candidate, user[4]):
+            raise HTTPException(401, 'invalid_credentials')
+        return start_session(db, user, request, response)
+
+
+@router.get('/me')
+def me(request: Request, response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    token = request.cookies.get(COOKIE)
+    if not token:
+        return {'user': None}
+    with database() as db:
+        user = db.execute('SELECT u.id,u.name,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>?', (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
+    return {'user': {'id': user[0], 'name': user[1], 'email': user[2]} if user else None}
+
+
+@router.post('/logout')
+def logout(request: Request, response: Response):
+    check_origin(request)
+    token = request.cookies.get(COOKIE)
+    if token:
+        with database() as db:
+            db.execute('DELETE FROM sessions WHERE token_hash=?', (hashlib.sha256(token.encode()).hexdigest(),))
+    response.delete_cookie(COOKIE, path='/', httponly=True, samesite='strict')
+    response.headers['Cache-Control'] = 'no-store'
+    return {'ok': True}
+
+=== app\geo.py ===
+import csv
+import os
+import re
+from app.normalization import CITY_ALIASES, PROVINCE_ALIASES
+
+PATH = os.path.join(os.path.dirname(__file__), "..", "reference", "kato_ru.csv")
+
+KZ_LETTERS = re.compile(r"[әіңғүұқөһӘІҢҒҮҰҚӨҺ]")
+DOTTED = re.compile(
+    r"(?<!\w)(?:г\.а\.|г\.|гор\.|с\.о\.|с\.|п\.|пос\.|а\.о\.|а\.|ст\.|обл\.)\s*", re.I)
+WORDS = re.compile(
+    r"\b(?:город|область|район|поселок|посёлок|село|р-н|қаласы|қала|облысы|облыс|ауданы|аудан|ауыл|ауылы|кент)\b", re.I)
+
+
+def strip_markers(t: str) -> str:
+    t = DOTTED.sub(" ", t)
+    t = WORDS.sub(" ", t)
+    return re.sub(r"\s+", " ", t).strip(" .,-")
+
+
+def norm(t: str) -> str:
+    t = t.lower().replace("ё", "е")
+    t = re.sub(r"[^\w\s-]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return CITY_ALIASES.get(t, t)
+
+
+def pick_ru(seg: str) -> str:
+    """'город Алматы/Алматы қаласы' -> 'город Алматы' (русская половина)."""
+    parts = [p.strip() for p in seg.split("/")]
+    for p in parts:
+        if p and not KZ_LETTERS.search(p):
+            return p
+    return parts[0]
+
+
+ROWS = {}
+with open(PATH, encoding="utf-8-sig", newline="") as f:
+    for r in csv.DictReader(f, delimiter=";"):
+        ROWS[int(r["id"])] = (int(r["parent_id"]), r["name"].strip())
+
+
+def top_of(i):
+    while ROWS[i][0] in ROWS:
+        i = ROWS[i][0]
+    return i
+
+
+def depth_of(i):
+    d = 0
+    while ROWS[i][0] in ROWS:
+        i = ROWS[i][0]
+        d += 1
+    return d
+
+
+PROV, DIST, LOC = {}, {}, {}
+for i, (parent, name) in ROWS.items():
+    key = norm(strip_markers(name))
+    if not key:
+        continue
+    d = depth_of(i)
+    if d == 0:
+        PROV.setdefault(key, []).append(i)
+        if not re.search(r"област", name, re.I):
+            LOC.setdefault(key, []).append(i)
+    elif re.search(r"с\.о|а\.о", name, re.I):
+        continue
+    elif re.search(r"район|р\.а\.", name, re.I):
+        DIST.setdefault(key, []).append(i)
+    else:
+        LOC.setdefault(key, []).append(i)
+
+
+for _alias, _canonical in PROVINCE_ALIASES.items():
+    if norm(_canonical) in PROV and norm(_alias) not in PROV:
+        PROV[norm(_alias)] = PROV[norm(_canonical)]
+
+
+def prov_display(i):
+    name = ROWS[i][1]
+    m = re.match(r"\s*область\s+(.+)", name, re.I)
+    if m:
+        return m.group(1).strip() + " область"
+    if re.search(r"област", name, re.I):
+        return name.strip()
+    return strip_markers(name)
+
+def resolve_geo(segments):
+    out = {"province": None, "city": None, "district": None, "geo_conf": 0.0}
+    prov_id, city_text, ambiguous = None, None, False
+
+    for seg in segments:
+        text = pick_ru(seg)
+        shown = strip_markers(text)
+        key = norm(shown)
+        if not key:
+            continue
+        is_dist = re.search(r"\b(район|р-н|ауданы)\b", text, re.I)
+        is_prov = re.search(r"\b(область|облысы)\b|обл\.", text, re.I)
+
+        if is_dist:
+            out["district"] = shown
+            if prov_id is None and key in DIST:
+                tops = {top_of(i) for i in DIST[key]}
+                if len(tops) == 1:
+                    prov_id = tops.pop()
+        elif is_prov and key in PROV:
+            prov_id = PROV[key][0]
+        elif key in LOC:
+            city_text = shown
+        elif key in PROV:
+            prov_id = PROV[key][0]
+        elif key in DIST:
+            out["district"] = shown
+        else:
+            city_text = city_text or shown
+
+    if city_text:
+        out["city"] = city_text
+        ids = LOC.get(norm(city_text), [])
+        if prov_id:
+            narrowed = [i for i in ids if top_of(i) == prov_id]
+            ids = narrowed or ids
+        city_ids = [i for i in ids if re.search(r"г\.а\.|^г\.|город|қаласы", ROWS[i][1], re.I)]
+        village = any(re.search(r"\bсело\b|(?<!\w)с\.|посел|посёл|пос\.|ауылы", pick_ru(sg), re.I)
+                      for sg in segments if norm(strip_markers(pick_ru(sg))) == norm(city_text))
+        if not village:
+            ids = city_ids or ids
+        tops = {top_of(i) for i in ids}
+        if len(tops) > 1:
+            ambiguous = True
+        if ids:
+            district_ids = set()
+            for item in ids:
+                district = None
+                parent = ROWS[item][0]
+                while parent in ROWS:
+                    if re.search(r'район|р\.а\.|ауданы', ROWS[parent][1], re.I):
+                        district = parent
+                        break
+                    parent = ROWS[parent][0]
+                district_ids.add(district)
+            if not out['district'] and len(district_ids) == 1 and None not in district_ids:
+                out['district'] = strip_markers(ROWS[next(iter(district_ids))][1])
+            best = min(ids, key=depth_of)
+            if depth_of(best) == 0:
+                prov_id = best
+            elif prov_id is None and not ambiguous:
+                prov_id = top_of(best)
+
+    if prov_id:
+        out["province"] = prov_display(prov_id)
+
+    score = 0.0
+    score += 0.5 if out["province"] else 0
+    score += 0.5 if out["city"] else 0
+    out["geo_conf"] = score - (0.3 if ambiguous else 0)
+
+    return out
+
+=== app\glued.py ===
+
+import re
+import unicodedata
+
+LOW = 'а-яёәіңғүұқөһ'
+UP = 'А-ЯЁӘІҢҒҮҰҚӨҺ'
+BN = '\x01'  # «б/н» (без номера) как один символ
+
+_CHUNK = re.compile(
+    rf'(?P<num>\d+(?:/\d+)?(?:-\d+)?)'
+    rf'|(?P<bn>{BN})'
+    rf'|(?P<caps>[{UP}]{{2,}}(?![{LOW}])|[A-Z]{{2,}}(?![a-z]))'
+    rf'|(?P<cap>[{UP}][{LOW}]*(?:-[{UP}][{LOW}]*)*|[A-Z][a-z]*(?:-[A-Z][a-z]*)*)'
+    rf'|(?P<low>[{LOW}]+|[a-z]+)'
+    rf'|(?P<slash>/)'
+    rf'|(?P<other>\S)'
+)
+
+FIELD = {}
+for _name, _words, _suffix in (
+    ('house', ('д', 'дом', 'дм', 'house'), False),
+    ('house', ('үй', 'үйі', 'уй'), True),
+    ('apartment', ('кв', 'квартира', 'кварт', 'офис', 'оф', 'пом', 'помещ', 'помещение', 'flat', 'kv', 'kb', 'apt'), False),
+    ('apartment', ('пәтер', 'пэтер', 'pater'), True),
+    ('entrance', ('под', 'подъезд', 'подьезд', 'подезд', 'пд'), False),
+    ('entrance', ('кіреберіс', 'киреберис'), True),
+    ('floor', ('эт', 'этаж', 'floor'), False),
+    ('floor', ('қабат', 'кабат'), True),
+    ('building', ('корп', 'корпус', 'блок', 'block'), False),
+    ('structure', ('стр', 'строение'), False),
+):
+    for _w in _words:
+        FIELD[_w] = (_name, _suffix)
+
+TYPE = {
+    'ул': 'ул.', 'улица': 'ул.', 'көше': 'ул.', 'көшесі': 'ул.', 'ul': 'ул.',
+    'пр': 'пр.', 'пр-т': 'пр.', 'пр-кт': 'пр.', 'проспект': 'пр.', 'даңғылы': 'пр.', 'даңғыл': 'пр.',
+    'мкр': 'мкр.', 'мкрн': 'мкр.', 'микрорайон': 'мкр.', 'mkr': 'мкр.',
+    'пер': 'пер.', 'переулок': 'пер.', 'бул': 'бул.', 'бульвар': 'бул.',
+}
+GEO = {  # суффиксы геообъектов в казахском: «Қарасайауданы»
+    'ауданы': 'district', 'аудан': 'district', 'район': 'district',
+    'ауылы': 'locality', 'ауыл': 'locality',
+    'облысы': 'province', 'обл': 'province', 'область': 'province',
+}
+CITY_TAIL = {'ш', 'қ', 'қала', 'қаласы', 'г'}
+LIVING = {'жк', 'жм'}
+LETTER_MARKERS = set('дкспо')  # одиночные строчные буквы, которые чаще маркеры, чем литера дома
+
+_MARKERS_BY_LEN = sorted(set(FIELD) | set(TYPE) | set(GEO), key=len, reverse=True)
+_PEEL = sorted([m for m in set(FIELD) | set(GEO) | {'көшесі', 'көше', 'даңғылы', 'даңғыл'} if len(m) >= 2],
+               key=len, reverse=True)
+_ROMAN = re.compile(r'[IVXLC]+', re.I)
+
+
+def _segment_lower(word):
+    """'дкв' -> ['д','кв']; если разобрать целиком нельзя — [word]."""
+    out, pos = [], 0
+    while pos < len(word):
+        for marker in _MARKERS_BY_LEN:
+            if word.startswith(marker, pos):
+                out.append(marker)
+                pos += len(marker)
+                break
+        else:
+            return [word]
+    return out
+
+
+def _peel_suffixes(word):
+    """'Вкв' -> ('В',['кв']), 'Елдаңғылы' -> ('Ел',['даңғылы']), 'Қарасайауданы' -> ('Қарасай',['ауданы'])."""
+    tail = []
+    while True:
+        low = word.lower()
+        for marker in _PEEL:
+            if low.endswith(marker) and len(word) > len(marker):
+                head = word[:-len(marker)]
+                # одиночную заглавную букву оставляем (литера корпуса), иначе голова >= 2 букв
+                if len(head) >= 2 or head.isupper():
+                    word = head
+                    tail.insert(0, marker)
+                    break
+        else:
+            return word, tail
+
+
+def _chunks(text):
+    items = []
+    for m in _CHUNK.finditer(text):
+        kind, value = m.lastgroup, m.group()
+        if kind == 'other':
+            continue
+        items.append([kind, value])
+    return items
+
+
+def _find_city(word, is_city):
+    """Самый длинный префикс-город + допустимый «хвост» (маркер типа улицы, ш/қ, обл...)."""
+    low_tails = set(TYPE) | set(GEO) | CITY_TAIL | LIVING
+
+    def tail_ok(rest):
+        rest = rest.lower()
+        if rest == '' or rest in low_tails:
+            return True
+        # опечатка вида «Атыраулмкр»: один лишний символ перед известным маркером
+        return any(rest.endswith(t) and len(rest) - len(t) == 1 for t in low_tails if len(t) >= 2)
+
+    for k in range(len(word), 2, -1):
+        if is_city(word[:k]) and tail_ok(word[k:]):
+            return word[:k], word[k:].lower()
+    return None, None
+
+
+def explode(raw, is_city):
+    """Возвращает каноническую строку «г. Город, ул. Улица, д. 1, кв. 2» либо None."""
+    s = unicodedata.normalize('NFKC', raw or '')
+    s = re.sub(r'[\u200b-\u200f\u2060\ufeff\u00ad]', '', s).strip()
+    if len(s) < 12 or re.search(r'[\s,;]', s) or not re.search(r'\d|б\s*/\s*н', s, re.I):
+        return None  # обычная строка — её разберёт основной конвейер
+
+    s = re.sub(r'б\s*/\s*н', BN, s, flags=re.I)
+    s = re.sub(r'№|No\.?', '', s)
+    raw_items = _chunks(s)
+
+    # 1) раскладываем куски: отщепляем маркеры, режем строчные цепочки
+    items = []
+    for kind, value in raw_items:
+        if kind == 'cap':
+            head, tail = _peel_suffixes(value)
+            items.append(['cap', head])
+            items.extend(['low', t] for t in tail)
+        elif kind == 'low':
+            parts = _segment_lower(value)
+            if len(value) == 1 and value not in FIELD and value not in TYPE:
+                items.append(['letter', value])
+            else:
+                items.extend(['low', p] for p in parts)
+        else:
+            items.append([kind, value])
+
+    # 1б) «Байганинад3/2» -> Байганина + д; «Авангард3д22» (д дальше есть) не трогаем
+    for k in range(len(items) - 1):
+        kind, value = items[k]
+        if (kind == 'cap' and items[k + 1][0] == 'num' and value[-1:] in 'дД' and len(value) >= 5
+                and value[-2].lower() not in 'рнлзг'
+                and not any(it[0] == 'low' and it[1] in ('д', 'дом') for it in items[k + 2:])):
+            items[k][1] = value[:-1]
+            items.insert(k + 1, ['low', 'д'])
+            break
+
+    # 2) приставка «г»/«г.» перед городом
+    if items and items[0][0] == 'low' and items[0][1] in ('г', 'гор', 'город'):
+        items.pop(0)
+    elif items and items[0][0] == 'letter' and items[0][1] == 'г':
+        items.pop(0)
+    if not items or items[0][0] != 'cap':
+        return None
+
+    # 3) город (+ слитный маркер после него). Город мог быть отщеплён «по хвосту» — склеим заново.
+    first = items[0][1]
+    consumed = 1
+    while True:
+        city, rest = _find_city(first, is_city)
+        if city:
+            break
+        # «Усть-Каменогорск»/двухсловные города: пробуем присоединить следующий cap
+        if consumed < len(items) and items[consumed][0] == 'cap' and consumed < 3:
+            first += items[consumed][1]
+            consumed += 1
+            continue
+        return None
+    items = items[consumed:]
+    # опечатка «Атыраулмкр»: хвост = лишняя буква + маркер -> берём сам маркер
+    if rest not in TYPE and rest not in GEO and rest not in CITY_TAIL:
+        rest = next((t for t in sorted(TYPE, key=len, reverse=True) if rest.endswith(t)), rest)
+    province = None
+    if rest == '' and items and items[0][0] == 'low' and GEO.get(items[0][1]) == 'province':
+        rest = items.pop(0)[1]
+    if rest in GEO and GEO[rest] == 'province':
+        province, city = city, None
+    elif rest in TYPE:
+        items.insert(0, ['low', rest])
+    # остальные хвосты (ш, қ, ...) — просто признак города
+
+    # 4) автомат полей
+    out = {'house': None, 'apartment': None, 'entrance': None, 'floor': None,
+           'building': None, 'structure': None}
+    street_type, names, living, district, locality = None, [], None, None, None
+    n = len(items)
+    i = 0
+
+    def take_value(j):
+        """Значение поля после маркера: число(+литера), римская цифра, литера(+число). -> (value, next_j)."""
+        if j >= n:
+            return None, j
+        kind, value = items[j]
+        if kind == 'num':
+            j += 1
+            if j + 1 < n and items[j][0] == 'slash' and items[j + 1][0] in ('letter', 'cap') and len(items[j + 1][1]) == 1:
+                value += '/' + items[j + 1][1]
+                j += 2
+                return value, j
+            if j < n and items[j][0] in ('letter', 'cap') and len(items[j][1]) == 1 and items[j][1].lower() not in LETTER_MARKERS:
+                value += items[j][1]
+                j += 1
+            return value, j
+        if kind == 'caps' and _ROMAN.fullmatch(value):
+            return value, j + 1
+        if kind in ('cap', 'letter') and len(value) == 1:
+            letter = value
+            j += 1
+            if j < n and items[j][0] == 'num':
+                letter += items[j][1]
+                j += 1
+            return letter, j
+        if kind == 'bn':
+            return 'б/н', j + 1
+        return None, j
+
+    while i < n:
+        kind, value = items[i]
+        low = value.lower()
+
+        if kind == 'num':
+            nxt = items[i + 1] if i + 1 < n else None
+            nxt2 = items[i + 2] if i + 2 < n else None
+            # «144үй», «34пәтер» — число перед казахским маркером
+            if nxt and nxt[0] == 'low' and nxt[1] in FIELD and FIELD[nxt[1]][1]:
+                out[FIELD[nxt[1]][0]] = value
+                i += 2
+                continue
+            # «12д» + «кв…»: д — суффикс дома, а не префикс следующего числа
+            if nxt and nxt[0] == 'low' and nxt[1] in ('д', 'дом') and (nxt2 is None or nxt2[0] != 'num'):
+                out['house'] = value
+                i += 2
+                continue
+            val, j = take_value(i)
+            # у микрорайона первое число — часть названия («Аксай 4»), дом идёт после «д»
+            if street_type == 'мкр.' and names and not names[-1][-1:].isdigit() and out['house'] is None \
+                    and j < n and items[j][0] == 'low' and items[j][1] in ('д', 'дом'):
+                names[-1] += ' ' + val
+                i = j
+                continue
+            if out['house'] is None:
+                out['house'] = val
+            i = j
+            continue
+
+        if kind == 'bn':
+            out['house'] = 'б/н'
+            i += 1
+            continue
+
+        if kind == 'low' and low in FIELD:
+            field, _ = FIELD[low]
+            val, j = take_value(i + 1)
+            if val is not None and out[field] is None:
+                out[field] = val
+                i = j
+                continue
+            i += 1
+            continue
+
+        if kind == 'low' and low in TYPE:
+            street_type = TYPE[low]
+            i += 1
+            continue
+
+        if kind == 'low' and low in GEO:
+            target = GEO[low]
+            if names:
+                value_ = ' '.join(names)
+                names = []
+                if target == 'district':
+                    district = value_
+                elif target == 'locality':
+                    locality = value_
+                elif target == 'province':
+                    province = value_
+            i += 1
+            continue
+
+        if kind == 'caps' and low in LIVING:
+            j, area = i + 1, []
+            while j < n and items[j][0] in ('cap', 'caps') and items[j][1].lower() not in LIVING:
+                area.append(items[j][1])
+                j += 1
+            living = ' '.join(area) or None
+            i = j
+            continue
+
+        if kind in ('cap', 'caps'):
+            names.append(value)
+            i += 1
+            continue
+
+        i += 1  # неопознанный мусор и одиночные «/»
+
+    name = ' '.join(names) or None
+    if not (name or living) and out['house'] is None:
+        return None
+
+    parts = []
+    if province:
+        parts.append(f'{province} облысы')
+    if district:
+        parts.append(f'{district} ауданы')
+    if city:
+        parts.append(f'г. {city}')
+    if locality:
+        parts.append(f'{locality} ауылы')
+    if living:
+        parts.append(f'ЖК {living}')
+    if name:
+        parts.append(f'{street_type} {name}' if street_type else name)
+    for field, label in (('house', 'д.'), ('building', 'корп.'), ('structure', 'стр.'),
+                         ('entrance', 'под.'), ('floor', 'эт.'), ('apartment', 'кв.')):
+        if out[field]:
+            parts.append(f'{label} {out[field]}')
+    return ', '.join(parts)
+
+=== app\main.py ===
+import logging
+from typing import Any
+
+from fastapi import Body, FastAPI
+
+from app.parser import parse_address
+from app.auth import router as auth_router
+
+from pathlib import Path
+from fastapi.responses import FileResponse
+
+
+
+log = logging.getLogger("jana")
+app = FastAPI(title="Jana Address")
+app.include_router(auth_router)
+@app.get("/", include_in_schema=False)
+def index():
+    return FileResponse(Path(__file__).parent / "static" / "index.html")
+FIELDS = [
+    "province", "city", "district", "living_area", "street_type",
+    "street_name", "house", "apartment", "entrance", "floor", "landmark", "postal_code", "building", "structure",
+]
+LIST_KEYS = ("records", "data", "items", "addresses")
+
+
+def as_record(item: Any) -> dict:
+    """Любой элемент превращаем в запись: строка = raw_address, мусор = пустая запись."""
+    if isinstance(item, dict):
+        return item
+    if isinstance(item, str):
+        return {"raw_address": item}
+    return {}
+
+
+def extract_records(payload: Any) -> list:
+    """Принимает голый список, {"records": [...]} и одиночную запись."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in LIST_KEYS:
+            if isinstance(payload.get(key), list):
+                return payload[key]
+        if "raw_address" in payload:
+            return [payload]
+    return []
+
+
+def parse_one(item: Any) -> dict:
+    rec = as_record(item)
+    raw = rec.get("raw_address")
+    if raw is not None and not isinstance(raw, str):
+        raw = str(raw)
+    out = {"id": rec.get("id"), "raw_address": raw}
+    for f in FIELDS:
+        out[f] = None
+    out["confidence"] = 0.0
+    try:
+        parsed = parse_address(raw or "")
+        for f in FIELDS:
+            out[f] = parsed.get(f)
+        out["confidence"] = parsed.get("confidence", 0.0)
+        out['review'] = parsed.get('review', {'needs_review': True, 'issues': []})
+    except Exception:
+        log.exception("parse failed for id=%s", rec.get("id"))
+    return out
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/parse")
+def parse_single(payload: Any = Body(...)):
+    records = extract_records(payload)
+    return parse_one(records[0] if records else payload)
+
+
+@app.post("/parse/batch")
+def parse_batch(payload: Any = Body(...)):
+    return [parse_one(r) for r in extract_records(payload)]
+
+=== app\normalization.py ===
+import re
+
+FIELD_WORDS = {
+    'house': ('дом','дм','д','үй','үйі','уй','ui','uy','house','bld','building'),
+    'apartment': ('квартира','кварт','кв','пәтер','пәтері','пэтер','pater','flat','kv','kb','apt','appt','apartment','офис','office','нп','пом','помещ','помещение'),
+    'entrance': ('подъезд','подьезд','подьедз','подъедз','подезд','подъ','под','пд','podest','кіреберіс','кіреберісі','киреберис','entrance'),
+    'floor': ('этаж','эт','қабат','қабаты','кабат','floor'),
+    'building': ('корпус','корп','к','блок','block','корпусы'),
+    'structure': ('строение','стр','құрылыс','құрылысы'),
+}
+STREET_WORDS = {
+    'улица': ('улица','улиц','ул','көше','көшесі','көш','к-сі','косеси','кошеси','koshe','koshesi','street','st','str','ul'),
+    'проспект': ('проспект','просп','пр-т','пр-кт','пркт','пр','даңғыл','даңғылы','даңғ','д-лы','дангылы','avenue','ave'),
+    'переулок': ('переулок','пер','тұйық','тұйығы','туйык','lane'),
+    'микрорайон': ('микрорайон','мкрн','мкр','mkr','шағынаудан','шағын-аудан','ықшамаудан','ықшам-аудан'),
+    'квартал': ('квартал','кв-л','орам','орамы'),
+    'бульвар': ('бульвар','бул','бульвары','boulevard'),
+    'шоссе': ('шоссе','тасжол','тасжолы'),
+    'проезд': ('проезд','өтпе','өткел'),
+    'площадь': ('площадь','пл','алаң','алаңы'),
+    'набережная': ('набережная','наб','жағалау','жағалауы'),
+    'тупик': ('тупик',),
+    'тракт': ('тракт','трасса','трасс','трассасы'),
+}
+CITY_ALIASES = {
+    'ақтөбе':'актобе','ақтау':'актау','атырау':'атырау','қарағанды':'караганда','қостанай':'костанай',
+    'қызылорда':'кызылорда','көкшетау':'кокшетау','талдықорған':'талдыкорган','түркістан':'туркестан',
+    'теміртау':'темиртау','екібастұз':'экибастуз','орал':'уральск','өскемен':'усть-каменогорск',
+    'петропавл':'петропавловск','жезқазған':'жезказган','қонаев':'конаев','балқаш':'балхаш','байқоңыр':'байконур',
+    'нур-султан':'астана','нурсултан':'астана','nur-sultan':'астана','алма-ата':'алматы','alma-ata':'алматы',
+    'astana':'астана','almaty':'алматы','aktobe':'актобе','aktau':'актау','atyrau':'атырау',
+    'karaganda':'караганда','pavlodar':'павлодар','kostanay':'костанай','kyzylorda':'кызылорда',
+    'shymkent':'шымкент','taraz':'тараз','semey':'семей','petropavlovsk':'петропавловск',
+    'kokshetau':'кокшетау','taldykorgan':'талдыкорган','turkestan':'туркестан','uralsk':'уральск',
+    'ekibastuz':'экибастуз','temirtau':'темиртау','rudny':'рудный','zhezkazgan':'жезказган','balkhash':'балхаш',
+    'baikonur':'байконур','ust-kamenogorsk':'усть-каменогорск','ust kamenogorsk':'усть-каменогорск',
+    'oskemen':'усть-каменогорск','semipalatinsk':'семей','petropavl':'петропавловск','konayev':'конаев','konaev':'конаев',
+}
+PROVINCE_ALIASES = {
+    'ақмола':'акмолинская','ақтөбе':'актюбинская','қарағанды':'карагандинская','қостанай':'костанайская',
+    'қызылорда':'кызылординская','маңғыстау':'мангистауская','жамбыл':'жамбылская','жетісу':'жетісу',
+    'түркістан':'туркестанская','ұлытау':'ұлытау','абай':'абай','алматы':'алматинская',
+    'жетысуская':'жетісу','улытауская':'ұлытау','абайская':'абай',
+    'атырау':'атырауская','павлодар':'павлодарская','батыс қазақстан':'западно-казахстанская',
+    'шығыс қазақстан':'восточно-казахстанская','солтүстік қазақстан':'северо-казахстанская',
+    'pavlodarskaya':'павлодарская','almatinskaya':'алматинская','karagandinskaya':'карагандинская',
+    'akmolinskaya':'акмолинская','aktyubinskaya':'актюбинская','kostanayskaya':'костанайская',
+    'atyrauskaya':'атырауская','mangistauskaya':'мангистауская','kyzylordinskaya':'кызылординская',
+    'turkestanskaya':'туркестанская','zhambylskaya':'жамбылская','severo-kazakhstanskaya':'северо-казахстанская',
+    'zapadno-kazakhstanskaya':'западно-казахстанская','vostochno-kazakhstanskaya':'восточно-казахстанская',
+}
+POSTAL = r'(?:\d{6}|[A-Z]\d{2}[A-Z]\d[A-Z]\d)'
+ACCESS_NOTE = re.compile(r'(?<!\w)(?:код|домофон|звонить|оставить|пароль)(?=\s|[:#№-]|\d|$).*$', re.I)
+POST_BOX = re.compile(r'(?<!\w)(?:(?:абонентский|почтовый)\s+ящик\s*)?(?:а\s*/\s*я|a\s*/\s*y)\s*[:№#.-]?\s*[\w/-]+|(?<!\w)(?:абонентский|почтовый)\s+ящик\s*[:№#.-]?\s*[\w/-]+', re.I)
+PARENTHETICAL_NOTE = re.compile(r'\(([^()]*)\)')
+ACCESS_CODE = re.compile(r'(?<!\w)#\s*[A-ZА-Я]?\d+[A-ZА-Я]?(?!\w)', re.I)
+
+
+def strip_access_notes(text):
+    """Remove delivery/access instructions so their codes cannot become address numbers."""
+    text = PARENTHETICAL_NOTE.sub(' ', text or '')
+    text = ACCESS_CODE.sub(' ', text)
+    return ACCESS_NOTE.sub('', text).rstrip(' ,;')
+
+
+def strip_post_boxes(text):
+    """Remove postal-box identifiers so their numbers are not parsed as address units."""
+    return POST_BOX.sub(' ', text or '')
+
+
+def _typo_aliases():
+    words={word for group in (*FIELD_WORDS.values(),*STREET_WORDS.values()) for word in group if len(word)>=5}
+    candidates={}
+    for word in words:
+        variants={word[:i]+word[i+1:] for i in range(len(word))}
+        variants|={word[:i]+word[i+1]+word[i]+word[i+2:] for i in range(len(word)-1)}
+        variants|={word[:i]+word[i]+word[i:] for i in range(len(word))}
+        for variant in variants:candidates.setdefault(variant,set()).add(word)
+    return {variant:next(iter(targets)) for variant,targets in candidates.items() if len(targets)==1 and variant not in words}
+
+
+TYPO_ALIASES=_typo_aliases()
+
+
+def extract_postal(s):
+    label=r'(?:почтовый\s*индекс|пошталық\s*индекс|пошта\s*индексі|индекс[і]?|postal\s*code|postcode|zip\s*code|zipcode|zip)'
+    explicit = re.compile(rf'(?<!\w){label}\s*[:№#.-]?\s*((?=[A-Z0-9]*\d)[A-Z0-9]{{4,10}})(?!\w)',re.I)
+    matches=list(explicit.finditer(s))
+    if not matches:
+        matches=list(re.finditer(rf'(?<!\w)({POSTAL})\s*{label}(?!\w)',s,re.I))
+    if not matches:
+        for match in re.finditer(rf'(?<!\w){POSTAL}(?!\w)',s,re.I):
+            before=s[:match.start()]
+            if re.search(r'(?:дом|дм|үй|квартира|пәтер|bld|appt)\s*[.№#]?\s*$',before,re.I):
+                continue
+            matches.append(match)
+    if not matches:
+        return None,s
+    first=matches[0]
+    value=first.group(1) if first.lastindex else first.group()
+    for match in reversed(matches):s=s[:match.start()]+' '+s[match.end():]
+    return value.upper(),s
+
+
+def join_spaced_numbers(s):
+    """После явного маркера одиночные цифры образуют один номер; запятая — граница."""
+    words = {word for group in FIELD_WORDS.values() for word in group}
+    words |= {alias for alias, target in TYPO_ALIASES.items() if target in words}
+    markers = '|'.join(re.escape(word) for word in sorted(words, key=len, reverse=True))
+    pattern = rf'(?<!\w)({markers})(\.?\s*)(\d(?:[ \t]+\d){{1,5}})(?!\w|[ \t]+\d)'
+    return re.sub(pattern, lambda m: m[1]+m[2]+re.sub(r'\s+', '', m[3]), s, flags=re.I)
+
+
+def normalize_compact(s):
+    """Разделяет маркеры на границах чисел и в начале слова, не режет произвольные названия."""
+    s=re.sub(r'(?<!\w)((?i:ул|ul|мкрн|мкр|mkr|пр-т|пр))(?=[А-ЯӘІҢҒҮҰҚӨҺ])',r'\1 ',s)
+    s=re.sub(
+        r'(?P<prefix>[^\W\d_]*?)(?P<number>\d+[а-яa-z]?)(?P<marker>дом|дм|үйі?|уй)(?P<tail>/\d+[а-яa-z]?)',
+        lambda m: (m['prefix'] + ' ' if m['prefix'] else '') + m['marker'] + ' ' + m['number'] + m['tail'],
+        s, flags=re.I,
+    )
+    field_words={word for words in FIELD_WORDS.values() for word in words if len(word)>=2}
+    street_words={word for words in STREET_WORDS.values() for word in words if len(word)>=3}
+    street_suffixes='|'.join(re.escape(word) for word in sorted(street_words,key=len,reverse=True))
+    s=re.sub(rf'(?<!\w)({street_suffixes})(?=\d)',r'\1 ',s,flags=re.I)
+    s=re.sub(rf'(?<=[^\W\d_])({street_suffixes})(?=\d)',r' \1 ',s,flags=re.I)
+    markers='|'.join(re.escape(word) for word in sorted(field_words|street_words,key=len,reverse=True))
+    fields='|'.join(re.escape(word) for word in sorted(field_words,key=len,reverse=True))
+    glued_following = field_words | street_words | {'магазин','паркинг','парковка','тц','трц','банк','школа','аптека','qazpost','жанында','рядом','возле'}
+    following='|'.join(re.escape(word) for word in sorted(glued_following,key=len,reverse=True))
+    s=re.sub(rf'(?<!\w)({fields})(?=(?:{following}))',r'\1 ',s,flags=re.I)
+    s=re.sub(rf'(?<!\w)({fields})\s*[№#:=]\s*(?=\d)',r'\1 ',s,flags=re.I)
+    s=re.sub(rf'(?<!\w)({fields})\s*no\.?\s*(?=\d)',r'\1 ',s,flags=re.I)
+    s=re.sub(rf'(?<!\w)({fields})(?=[a-zа-я]\d)',r'\1 ',s,flags=re.I)
+    house_markers='|'.join(re.escape(word) for word in sorted(FIELD_WORDS['house'],key=len,reverse=True))
+    apartment_markers='|'.join(re.escape(word) for word in sorted(FIELD_WORDS['apartment'],key=len,reverse=True))
+    s=re.sub(rf'(?<!\w)({house_markers})({apartment_markers})(?=\d)',r'\1 \2 ',s,flags=re.I)
+    s=re.sub(rf'(?<=\d)({house_markers})\s*({apartment_markers})(?=\s*\d)',r' \1 \2 ',s,flags=re.I)
+    s=re.sub(rf'(?<!\w)({fields})\?\s*',r'\1 ',s,flags=re.I)
+    s=re.sub(rf'(?<!\w)({fields})\s*[—–]\s*(?=\d)',r'\1 ',s,flags=re.I)
+    s=re.sub(r'(?<!\w)(ул|ul|st)\s*\.(?=\s|$)',r'\1 ',s,flags=re.I)
+    s=re.sub(r'(?<!по)(?<![Пп][Оо])(?<=[^\W\d_])д\.\s*(?=\d)',' д',s)   # не рвём «под. 2» на «по д2»
+    s=re.sub(rf'(?<=\d)-(?=(?:{markers}))',' ',s,flags=re.I)
+    s=re.sub(rf'(?<=\d)(?=(?:{markers}))',' ',s,flags=re.I)
+    s=re.sub(r'(?<=\d)(?=[^\W\d_]{2,})',' ',s,flags=re.U)
+    full_markers=sorted(set(STREET_WORDS)|{'мкр','мкрн','көшесі','көше','даңғылы','даңғыл','тұйық','тұйығы','шағынаудан','ықшамаудан'},key=len,reverse=True)
+    full_markers+=sorted({alias for alias,target in TYPO_ALIASES.items() if target in street_words and len(target)>=5},key=len,reverse=True)
+    known=field_words|street_words
+    def separate_name(match):
+        token=match.group()
+        if token.lower() in known or token.lower() in TYPO_ALIASES:return token
+        for marker in full_markers:
+            if token.lower().startswith(marker) and len(token)>len(marker)+1:
+                tail=token[len(marker):].lower()
+                if re.match(r'[ьъыйэ]',tail) or tail in {'ная','ный','ное','ной','ные','овая','овый','ская','ский','ых','ого'}:
+                    return token
+                return token[:len(marker)]+' '+token[len(marker):]
+        return token
+    s=re.sub(r'(?<!\w)[^\W\d_]+',separate_name,s)
+    s=re.sub(r'(?<!\w)(ул|ul|st)\.(?=\w)',r'\1 ',s,flags=re.I)
+    s=re.sub(r'(?<!\w)(город|қала(?!сы)|область|облыс(?!ы)|район)\s*(?=[^\W\d_])',r'\1 ',s,flags=re.I)
+    s=re.sub(r'(?<=\w)(?=қаласы\b|облысы\b|ауданы\b)',' ',s,flags=re.I)
+    return s
+
+
+def split_compact_chains(s):
+    s=re.sub(r'(?<!\w)(?:(?:дом|дм|д)\s*)?(\d+[а-яa-z]?(?:/\d+[а-яa-z]?)?)[- ]?(к|k|с|c)(\d+)(?!\w)',
+             lambda match:'дом'+match[1]+(' корпус' if match[2].lower() in {'к','k'} else ' строение')+match[3],s,flags=re.I)
+    words={word for words in FIELD_WORDS.values() for word in words if len(word)>=2}
+    words|={alias for alias,target in TYPO_ALIASES.items() if target in words}
+    markers='|'.join(re.escape(word) for word in sorted(words,key=len,reverse=True))
+    number=r'\d+[а-яa-z]??(?:/\d+[а-яa-z]??)?'
+    streets='|'.join(re.escape(word) for words in STREET_WORDS.values() for word in sorted(words,key=len,reverse=True) if len(word)>2)
+    prefix=re.compile(rf'(?:{markers}){number}(?=(?:{markers})|(?:{streets})|$)',re.I)
+    suffix=re.compile(rf'{number}(?:{markers})(?=\d|(?:{markers})|(?:{streets})|$)',re.I)
+    def separate(match):
+        token=match.group()
+        position=0;parts=[]
+        while position<len(token):
+            pattern=suffix if token[position].isdigit() else prefix
+            pair=pattern.match(token,position)
+            if not pair:break
+            parts.append(pair.group());position=pair.end()
+        if not parts:return token
+        if position<len(token):parts.append(token[position:])
+        return ' '.join(parts)
+    return re.sub(r'[^\s,;]+',separate,s)
+
+=== app\osm.py ===
+"""Поиск района и типа улицы по справочнику OSM (reference/osm_streets.sqlite).
+Если файла нет, всё работает как раньше: функции возвращают None."""
+import os
+import re
+import sqlite3
+from app.normalization import CITY_ALIASES
+
+PATH = os.path.join(os.path.dirname(__file__), "..", "reference", "osm_streets.sqlite")
+ALIAS = {"нур-султан": "астана", "өскемен": "усть-каменогорск", "қонаев": "конаев", "капчагай": "конаев"}
+TYPE_RE = r"улица|ул|проспект|пр-т|просп|пр|переулок|пер|бульвар|бул|шоссе|тупик|микрорайон|мкр|квартал|кв-л|көшесі|көше|кошеси|даңғылы|дангылы|даңғыл|тұйық көшесі|street|st|avenue|ave|road|rd"
+
+_db = None
+_cities = {}
+_compact_streets = {}
+
+
+def _compact_name(value):
+    return re.sub(r'[\W_]+', '', _norm(value).translate(str.maketrans('әіңғүұқөһ', 'аингуукох')))
+
+
+def _street_name_keys(value):
+    """Conservative spelling variants for Kazakh street names written in Russian case."""
+    key = _compact_name(value)
+    keys = {key} if key else set()
+    if len(key) >= 4:
+        if key.endswith("я"):
+            keys.add(key[:-1] + "й")
+            keys.add(key[:-1])
+        for ending, canonical in (("ова", "ов"), ("ева", "ев"), ("ина", "ин"), ("ына", "ын")):
+            if key.endswith(ending) and len(key) > len(ending) + 2:
+                keys.add(key[:-len(ending)] + canonical)
+    return keys
+
+
+def _conn():
+    global _db
+    if _db is None and os.path.exists(PATH):
+        _db = sqlite3.connect(PATH, check_same_thread=False)
+        _cities.update({r[0].lower(): r[0] for r in _db.execute("SELECT DISTINCT city FROM street")})
+    return _db
+
+
+def _city_record(city):
+    """Resolve Russian, Kazakh and common Latin city names to the OSM key."""
+    if not city:
+        return None
+    key = _norm(city).removeprefix("город ").strip()
+    key = ALIAS.get(key, CITY_ALIASES.get(key, key))
+    return _cities.get(key)
+
+
+def _norm(t):
+    t = t.lower().replace("ё", "е")
+    t = re.sub(r"[^\w\s-]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return re.sub(rf"^(?:{TYPE_RE})\s+|\s+(?:{TYPE_RE})$", "", t)
+
+
+def _place_district(db, c, name):
+    """Микрорайон / жилой массив: ищем в таблице мест, отбрасывая номер в конце ('аксай 3а' -> 'аксай')."""
+    n = _norm(name)
+    cands = [n]
+    base = re.sub(r"[\s-]+\d+[а-яa-z]?$", "", n)
+    if base != n:
+        cands.append(base)
+    for cand in cands:
+        rows = db.execute("SELECT district FROM place WHERE city=? AND (name=? OR name LIKE ? OR name LIKE ?)",
+                          (c, cand, cand + " %", cand + "-%")).fetchall()
+        ds = {r[0] for r in rows if r[0]}
+        if len(ds) == 1:
+            return ds.pop()
+    return None
+
+
+def lookup_place_district(city, name):
+    """Return a district only when the local place reference maps the name uniquely."""
+    db = _conn()
+    if db is None or not city or not name:
+        return None
+    c = _city_record(city)
+    return _place_district(db, c, name) if c else None
+
+
+def lookup_street_type_global(street_name):
+    """Infer a street type without a city only when the national OSM majority is clear."""
+    db = _conn()
+    if db is None or not street_name:
+        return None
+    name = _norm(street_name)
+    rows = db.execute(
+        "SELECT type, SUM(n) FROM street "
+        "WHERE name=? OR name LIKE ? GROUP BY type",
+        (name, "% " + name),
+    ).fetchall()
+    totals = {kind: count for kind, count in rows if kind and count}
+    total = sum(totals.values())
+    if not total:
+        return None
+    kind, count = max(totals.items(), key=lambda item: item[1])
+    return kind if count / total >= 0.5 else None
+
+
+def lookup(city, street_name, street_type=None):
+    """-> {'district': str|None, 'street_type': str|None} или None."""
+    db = _conn()
+    if db is None or not city or not street_name:
+        return None
+    c = _city_record(city)
+    if not c:
+        return None
+    out = {"district": None, "street_type": None}
+    rows = db.execute("SELECT type, district, n FROM street WHERE city=? AND name=?",
+                      (c, _norm(street_name))).fetchall()
+    if not rows:
+        if c not in _compact_streets:
+            names = {}
+            for (name,) in db.execute('SELECT DISTINCT name FROM street WHERE city=?', (c,)):
+                names.setdefault(_compact_name(name), set()).add(name)
+            _compact_streets[c] = names
+        matches = set().union(*(_compact_streets[c].get(key, set()) for key in _street_name_keys(street_name)))
+        if not matches and street_type not in ('микрорайон', 'квартал'):
+            base = re.sub(r'\s+\d+[а-яa-z]?$', '', street_name, flags=re.I)
+            if base != street_name:
+                matches = _compact_streets[c].get(_compact_name(base), set())
+        if len(matches) == 1:
+            name = next(iter(matches))
+            rows = db.execute('SELECT type, district, n FROM street WHERE city=? AND name=?', (c, name)).fetchall()
+            if re.sub(r'\s+', ' ', _norm(street_name).translate(str.maketrans('әіңғүұқөһ', 'аингуукох'))) != name:
+                out['street_name'] = name
+    for idx, key in ((1, "district"), (0, "street_type")):
+        tot = {}
+        for r in rows:
+            if r[idx]:
+                tot[r[idx]] = tot.get(r[idx], 0) + r[2]
+        if tot:
+            best = max(tot, key=tot.get)
+            if tot[best] / sum(tot.values()) >= (0.6 if key == "district" else 0.5):
+                out[key] = best
+    if out["district"] is None and street_type in ("микрорайон", "квартал", None):
+        out["district"] = _place_district(db, c, street_name)
+    if not out["district"] and not out["street_type"]:
+        return None
+    return out
+
+=== app\parser.py ===
+import re
+import unicodedata
+from functools import lru_cache
+from app import osm, glued
+from app.normalization import FIELD_WORDS, STREET_WORDS, PROVINCE_ALIASES, TYPO_ALIASES, PARENTHETICAL_NOTE, extract_postal, normalize_compact, split_compact_chains, strip_access_notes, strip_post_boxes
+from app.geo import resolve_geo, ROWS, depth_of, LOC, PROV, DIST, top_of, prov_display, norm as geo_norm, strip_markers, pick_ru
+
+
+def clean(s: str) -> str:
+    if not s:
+        return ""
+    s = unicodedata.normalize("NFKC", s)
+    s = re.sub(r"[\r\n]+", ", ", s)
+    s = re.sub(r"[\u200b-\u200f\u2060\ufeff\u00ad]", "", s)
+    s = s.replace("\xa0", " ")
+    s = re.sub(r"(?<!\w)(?:мкр|мкрн|мик|мк)\.?\s*-\s*(?:н|он)(?!\w)\.?", "мкр", s, flags=re.I)   # «мкр.-н Алмагуль»
+    s = re.sub(r"\.{2,}|…", ", ", s)                                # «г. Актобе... мкр. 11»
+    s = re.sub(r"(?<!\w)(даңғылы|көшесі)ның\s+жалғасы(?!\w)", r"\1", s, flags=re.I)  # «Абай даңғылының жалғасы» -> «Абай даңғылы»
+    s = re.sub(r"[!]+", " ", s)                                  # «кв. 14!!!»
+    s = re.sub(r"(?<![A-Za-z])No\.?\s*(?=\d)", " ", s)           # NFKC превращает «№» в «No»: «кв. № 18»
+    s = re.sub(r"(?<=[^\W\d_]\.)\s*-\s*(?=\d)", " ", s)        # «д.-14», «кв.-88»
+    s = re.sub(r"(?<=\d)\s*[«\"“„]\s*([^\W\d_])\s*[»\"”“]", r"\1", s)  # «д. 5 «б»» -> «5б»
+    s = re.sub(r"(?<!\w)н\s*\.\s*п\s*\.?(?!\w)", "нп", s, flags=re.I)
+    s = re.sub(r"(?<!\w)к-сі(?!\w)", "көшесі", s, flags=re.I)
+    s = re.sub(r"[;|]+", ",", s)
+    s = re.sub(r"\s*/{2,}\s*", ", ", s)
+    s = re.sub(r"\s+/\s+", ", ", s)
+    s = re.sub(r"[()\[\]]", ", ", s)
+    s = re.sub(r"\s+\.", ".", s)
+    s = re.sub(r"\.(?=\S)", ". ", s)
+    s = re.sub(r"(?:\s*,){2,}", ",", s)
+    s = re.sub(r"\s+", " ", s).strip(" ,")
+    return s
+
+
+KEYWORDS = (
+    r"квартал|квартира|кв|подъезд|подьезд|под|этаж|эт|дом|микрорайон|мкр|"
+    r"flat|kv|floor"
+)
+KW = {}
+for w in ("кв", "квартира", "кварт", "flat", "kv", "апт", "ап"):
+    KW[w] = "apartment"
+for w in ("подъезд", "подьезд", "подъ", "под", "п"):
+    KW[w] = "entrance"
+for w in ("этаж", "эт", "floor"):
+    KW[w] = "floor"
+for w in ("дом", "д", "дм", "уй"):
+    KW[w] = "house"
+
+NUM_RE = re.compile(r"^(?:\d+[а-яa-z]?(?:/(?:\d+[а-яa-z]?|[а-яa-z]))?(?:-\d+[а-яa-z]?)?|[ivxlcdm]+(?:-(?:\d+|[а-яa-z]+))?)$", re.I)
+for _field, _words in FIELD_WORDS.items():
+    for _word in _words:
+        KW[_word] = _field
+
+
+def extract_keyword_fields(s: str):
+    tokens = re.findall(r",|[^\s,]+", s)
+    norm = [canonical_marker(t) for t in tokens]
+    n = len(tokens)
+    is_num = [bool(NUM_RE.match(t)) for t in norm]
+
+    kws = [i for i, t in enumerate(norm) if t in KW
+           and not (t == "под" and i + 1 < n and norm[i + 1] in LANDMARK_INFLECTIONS)]
+
+    def free_nums(i, used):
+        cand = []
+        field = KW[norm[i]]
+        def usable(j):
+            return is_num[j] or (field == "building" and bool(re.fullmatch(r"[a-zа-я](?:\d+[a-zа-я]?)?(?:-\d+)?", tokens[j], re.I)))
+        if i > 0 and usable(i - 1) and (i - 1) not in used:
+            cand.append(i - 1)
+        if i + 1 < n and usable(i + 1) and (i + 1) not in used:
+            cand.append(i + 1)
+        return cand
+
+    suffix_votes = sum(1 for i in kws
+                       if i > 0 and is_num[i - 1] and not (i + 1 < n and is_num[i + 1]))
+    prefix_votes = sum(1 for i in kws
+                       if i + 1 < n and is_num[i + 1] and not (i > 0 and is_num[i - 1]))
+    suffix_style = suffix_votes > prefix_votes
+
+    fields, used, done = {}, set(), set()
+
+    changed = True
+    while changed:
+        changed = False
+        for i in kws:
+            if i in done or KW[norm[i]] in fields:
+                continue
+            cand = free_nums(i, used)
+            if len(cand) == 1:
+                j = cand[0]
+                fields[KW[norm[i]]] = tokens[j].strip(".")
+                used.update({i, j})
+                done.add(i)
+                changed = True
+        if changed:
+            continue
+        for i in kws:
+            if i in done or KW[norm[i]] in fields:
+                continue
+            cand = free_nums(i, used)
+            if len(cand) == 2:
+                if KW[norm[i]] == "apartment":
+                    j = cand[1]
+                else:
+                    j = cand[0] if suffix_style else cand[1]
+                fields[KW[norm[i]]] = tokens[j].strip(".")
+                used.update({i, j})
+                done.add(i)
+                changed = True
+                break
+
+    rest = [t for k, t in enumerate(tokens) if k not in used]
+    return fields, " ".join(rest)
+
+
+def split_glued(s: str) -> str:
+    s = re.sub(r"(\d)([^\W\d_]{2,})", r"\1 \2", s, flags=re.I)
+    s = re.sub(r"([^\W\d_]{2,})(\d)", r"\1 \2", s, flags=re.I)
+    return s
+
+
+_NO_JOIN = set("пдксвиуо")
+
+
+def join_house_letter(s):
+    def space_fix(m):
+        return m.group(0) if m.group(2).lower() in _NO_JOIN else m.group(1) + m.group(2)
+
+    def dash_fix(m):
+        return m.group(0) if m.group(2).lower() in "йм" else m.group(1) + m.group(2)
+
+    s = re.sub(r"(?<![\w/])(\d+)\s+([^\W\d_])(?![^\W\d_])", space_fix, s)
+    s = re.sub(r"(?<![\w/])(\d+)-([^\W\d_])(?![^\W\d_])", dash_fix, s)
+    return s
+
+
+def join_digit_runs(s):
+    def fix(m):
+        digits = m.group(0).split()
+        if len(digits) >= 3 or "0" in digits:
+            return "".join(digits)
+        return m.group(0)
+
+    return re.sub(r"(?<![\w/.,-])\d(?:[ \t]+\d)+(?![\w/-])", fix, s)
+
+
+def russian_city(city):
+    if not city:
+        return city
+    from app.normalization import CITY_ALIASES
+    city = re.sub(r"\s+(?:қаласы|қала|қ|ш|ауылы|ауыл)\.?$", "", city.strip(), flags=re.I)   # «Қосшы қ» -> «Қосшы»
+    target = CITY_ALIASES.get(geo_norm(city)) or CITY_ALIASES.get(city.strip().lower())
+    if target:
+        return target.title()
+    if geo_norm(city) in CITY_KEYS:
+        return city.title()
+    return city
+
+
+APT_WORDS = r"(?:кв|квартира|flat|kv|апт|ап)"
+ENT_WORDS = r"(?:подъезд|подьезд|под|п)"
+FLOOR_WORDS = r"(?:этаж|эт|floor)"
+HOUSE_WORDS = r"(?:дом|дм|д)"
+
+STREET_TYPES = {
+    "улица": "улица", "ул": "улица",
+    "проспект": "проспект", "пр": "проспект", "пр-т": "проспект", "просп": "проспект",
+    "микрорайон": "микрорайон", "мкр": "микрорайон", "мкрн": "микрорайон",
+    "переулок": "переулок", "пер": "переулок",
+    "квартал": "квартал", "кв-л": "квартал",
+    "бульвар": "бульвар", "бул": "бульвар",
+    "шоссе": "шоссе", "тупик": "тупик",
+}
+
+LANDMARK_WORDS = r"(?:магазин|тц|трц|банк|школа|аптека|паркинг|парковка|qazpost|рядом|возле|напротив)"
+for _type, _words in STREET_WORDS.items():
+    for _word in _words:
+        STREET_TYPES[_word] = _type
+
+LANDMARK_SET = {"магазин", "тц", "трц", "банк", "школа", "аптека", "паркинг", "паркингтің", "паркингтин", "паркингтың", "парковка",
+                "qazpost", "рядом", "возле", "напротив", "ориентир", "около", "за", "дүкен", "мектеп", "дәріхана", "жанында", "қарсысында"}
+GEO_MARKERS = {"город", "г", "область", "обл", "район", "р-н",
+               "қаласы", "қала", "облысы", "облыс", "ауданы", "аудан", "пос", "посёлок", "поселок", "ауыл", "ауылы", "oblast"}
+NUMBER_BEFORE_TYPE = {"микрорайон", "квартал"}
+
+
+_MISSING_LETTER_CANDIDATES = {}
+for _marker in ("переулок", "проспект", "микрорайон", "бульвар", "квартира", "подъезд"):
+    for _position in range(len(_marker)):
+        _variant = _marker[:_position] + _marker[_position + 1:]
+        _MISSING_LETTER_CANDIDATES.setdefault(_variant, set()).add(_marker)
+MARKER_ALIASES = {variant: next(iter(markers))
+                  for variant, markers in _MISSING_LETTER_CANDIDATES.items()
+                  if len(markers) == 1 and variant not in STREET_TYPES and variant not in KW}
+MARKER_ALIASES.update({"подьедз": "подъезд", "подъедз": "подъезд", "подезд": "подъезд"})
+MARKER_ALIASES["ауд"] = "ауданы"
+MARKER_ALIASES.update({
+    "qalasy": "қаласы", "qala": "қала", "каласы": "қаласы",
+    "ui": "үй", "uy": "үй", "pater": "пәтер", "pәтер": "пәтер",
+    "koshe": "көше", "koshesi": "көшесі", "кошеси": "көшесі",
+})
+MARKER_ALIASES.update({alias: target for alias, target in TYPO_ALIASES.items() if alias not in KW and alias not in STREET_TYPES})
+MARKER_ALIASES.update({"падъезд": "подъезд", "падьезд": "подъезд", "подъезт": "подъезд", "подьезт": "подъезд"})
+
+LANDMARK_INFLECTIONS = {"магазином", "магазина", "школой", "школы", "банком", "банка", "аптекой", "аптеки"}
+
+
+def extract_glued_fields(s):
+    words = set(KW) | {alias for alias, target in MARKER_ALIASES.items() if target in KW}
+    alternatives = "|".join(re.escape(word) for word in sorted(words, key=len, reverse=True))
+    number = r"\d+[а-яa-z]??(?:/\d+[а-яa-z]??)?"
+    separator = r"[-.]?"
+    next_explicit_field = rf"(?=\d+[а-яa-z]?(?:/\d+[а-яa-z]?)?{separator}\s*(?:{alternatives})(?!\w))"
+    patterns = [re.compile(rf"(?<!\w)(?P<marker>{alternatives}){separator}(?P<number>{number})(?!\w)", re.I),
+                re.compile(rf"(?<!\w)(?P<number>{number}){separator}\s*(?P<marker>{alternatives})(?:(?!\w)|{next_explicit_field})", re.I)]
+    candidates = sorted((match for pattern in patterns for match in pattern.finditer(s)), key=lambda match: match.start())
+    fields, used = {}, []
+    for match in candidates:
+        field = KW[canonical_marker(match['marker'])]
+        if field in fields or any(match.start() < end and match.end() > start for start, end in used):
+            continue
+        if match.re is patterns[1] and re.match(r'\s*[.№:#-]?\s*(?:\d|[^\W\d_](?![^\W\d_]))', s[match.end():], re.UNICODE):
+            continue
+        fields[field] = match['number']
+        used.append(match.span())
+    for start, end in sorted(used, reverse=True):
+        s = s[:start] + ' ' + s[end:]
+    return fields, s
+
+
+def extract_landmark(s):
+    tokens = list(re.finditer(r",|[^\s,]+", s))
+    for token in tokens:
+        if canonical_marker(token.group()) in {"рынок", "базар"}:
+            start = token.start()
+            landmark = " ".join(s[start:].replace(",", " ").split()).strip()
+            return landmark, s[:start].rstrip(" ,")
+    descriptive_entrance = re.compile(
+        r"^(?:со\s+двора|с\s+двора|со\s+стороны|с\s+улицы|возле\b|рядом\b|"
+        r"жанында\b|сол\b|оң\b|паркинг\w*\b)", re.I
+    )
+    for i, token in enumerate(tokens):
+        token_marker = canonical_marker(token.group())
+        is_entrance_marker = token_marker in {word for word, field in KW.items() if field == "entrance"}
+        if not is_entrance_marker and token_marker not in {"вход", "въезд"}:
+            continue
+        remainder = s[token.end():].lstrip(" ,")
+        if not descriptive_entrance.search(remainder):
+            continue
+        comma = s.find(",", token.end())
+        end = comma if comma >= 0 else len(s)
+        landmark = " ".join(s[token.end():end].split()).strip(" ,")
+        rest = s[:token.start()] + (s[comma + 1:] if comma >= 0 else "")
+        return landmark, rest
+    for i, token in enumerate(tokens):
+        if canonical_marker(token.group()) in LANDMARK_SET | LANDMARK_INFLECTIONS:
+            start = token.start()
+            if canonical_marker(token.group()) == "ориентир":
+                following = next((item for item in tokens[i + 1:] if item.group() != ","), None)
+                if following is None:
+                    continue
+                start = following.start()
+            if i and canonical_marker(tokens[i - 1].group()) in {"под", "над", "за", "перед", "у", "около"}:
+                if canonical_marker(token.group()) != "ориентир":
+                    start = tokens[i - 1].start()
+            if not s[:start].strip(" ,"):
+                comma = s.find(",", start)
+                if comma != -1:
+                    return ' '.join(s[start:comma].split()), s[comma + 1:]
+            return ' '.join(s[start:].replace(',', ' ').split()), s[:start]
+    return None, s
+
+
+def extract_intersection(s):
+    """Move a secondary crossing street into landmark, preserving the primary street."""
+    marker = re.compile(r"(?<!\w)(?:уг\.?|угол|пересечение(?:\s+улиц(?:ы)?)?)(?!\w)", re.I)
+    match = marker.search(s)
+    if not match:
+        return None, s
+    tail = s[match.start():]
+    end = len(tail)
+    comma = tail.find(',')
+    if comma >= 0:
+        end = min(end, comma)
+    boundary = re.search(r"(?<!\w)(?:дом|дм|д|үй|квартира|кв|пәтер|корпус|корп|подъезд|подьезд|этаж|эт)\.?\s*(?:\d|б/н)", tail, re.I)
+    if boundary:
+        end = min(end, boundary.start())
+    landmark = " ".join(tail[:end].split()).strip(" ,")
+    rest = (s[:match.start()] + " " + tail[end:]).strip(" ,")
+    return landmark or None, rest
+
+
+def extract_highway_route(s):
+    """Protect a hyphenated route name and its kilometre point from generic parsing."""
+    route = r"[^\s,]+(?:-[^\s,]+)+"
+    kilometer = r"(?:\d+\s*(?:км|километр(?:а|ов)?)|км\.?\s*\d+|\d+\s*-\s*й\s+километр)"
+    road_type = r"трассасы|трасса|тракт|шоссе|автодорога|автотрасса"
+    patterns = (
+        re.compile(rf"(?<!\w)(?P<km_before>{kilometer})\s+(?P<type>{road_type})\s+(?P<route>{route})(?:\s*,?\s*(?P<km_after>{kilometer}))?", re.I),
+        re.compile(rf"(?<!\w)(?P<type>{road_type})\s+(?P<route>{route})(?:\s*,?\s*(?P<km_after>{kilometer}))?", re.I),
+        re.compile(rf"(?<!\w)(?P<route>{route})\s+(?P<type>{road_type})(?:\s*,?\s*(?P<km_after>{kilometer}))?", re.I),
+    )
+    for pattern in patterns:
+        match = pattern.search(s)
+        if not match:
+            continue
+        marker = match.group('type').lower()
+        normalized_type = 'шоссе' if marker == 'шоссе' else ('тракт' if marker.startswith('трасс') else 'тракт')
+        kilometer_value = match.groupdict().get('km_before') or match.groupdict().get('km_after')
+        name = match.group('route')
+        if kilometer_value:
+            name = f"{name} {kilometer_value.strip()}"
+        rest = (s[:match.start()] + ' ' + s[match.end():]).strip(' ,')
+        return {'street_type': normalized_type, 'street_name': name}, rest
+    return None, s
+
+
+def split_compact_geography(s):
+    compact = lambda value: re.sub(r'[\s.-]+', '', value.lower())
+    regions = {}
+    for key, ids in PROV.items():
+        if any('област' in ROWS[item][1].lower() for item in ids):
+            regions[compact(key)] = prov_display(ids[0])
+    for alias, canonical in PROVINCE_ALIASES.items():
+        if compact(canonical) in regions:
+            regions[compact(alias)] = regions[compact(canonical)]
+    prefixes = {}
+    for name, display in regions.items():
+        for size in range(5, len(name)):
+            prefixes.setdefault(name[:size], set()).add(display)
+    for prefix, displays in prefixes.items():
+        if len(displays) == 1:
+            regions.setdefault(prefix, next(iter(displays)))
+    cities = {compact(key): key for key in CITY_KEYS}
+    from app.normalization import CITY_ALIASES
+    cities.update({compact(alias): alias for alias in CITY_ALIASES})
+
+    def separate(match):
+        original = match.group()
+        word = compact(original)
+        if '-' in original:
+            route_parts = [compact(part) for part in original.split('-')]
+            if (all(part in cities for part in route_parts)
+                    or (original[:1].isupper() and len(route_parts) >= 2
+                        and all(part[:1].isupper() for part in original.split('-'))
+                        and route_parts[0] in cities)):
+                return original
+        city_markers = sorted({compact(word) for words in STREET_WORDS.values() for word in words}, key=len, reverse=True)
+        for prefix in ("г", "g"):
+            for city in sorted(cities, key=len, reverse=True):
+                if not word.startswith(prefix + city):
+                    continue
+                tail = word[len(prefix) + len(city):]
+                marker = next((value for value in city_markers
+                               if len(value) >= 2 and tail.startswith(value) and len(tail) > len(value) + 1), None)
+                if marker:
+                    city_end = len(prefix) + len(city)
+                    marker_end = city_end + len(marker)
+                    return (' ' + CITY_ALIASES.get(city, cities[city]) + ' '
+                            + original[city_end:marker_end] + ' ' + original[marker_end:] + ' ')
+        marker = re.search(r'(область|обл|облысы|облыс|oblast)$', word)
+        if marker:
+            stem = word[:marker.start()]
+            if stem in regions:
+                return ' ' + regions[stem] + ' '
+            for city in sorted(cities, key=len, reverse=True):
+                if stem.startswith(city) and stem[len(city):] in regions:
+                    return ' ' + cities[city] + ' , ' + regions[stem[len(city):]] + ' '
+        for city in sorted(cities, key=len, reverse=True):
+            tail = word[len(city):] if word.startswith(city) else ""
+            suffixes = ("қаласы", "қала", "qalasy", "qala", "каласы", "қ", "q")
+            suffix = next((value for value in suffixes if tail.startswith(value)), None)
+            if suffix and len(tail) == len(suffix):
+                return ' ' + CITY_ALIASES.get(city, cities[city]) + ' ' + original[len(city):] + ' '
+            if suffix and len(tail) > len(suffix):
+                end = len(city) + len(suffix)
+                return (' ' + CITY_ALIASES.get(city, cities[city]) + ' '
+                        + original[len(city):end] + ' ' + original[end:] + ' ')
+            street_abbreviations = {word for group in STREET_WORDS.values() for word in group}
+            if tail in street_abbreviations:
+                return ' ' + CITY_ALIASES.get(city, cities[city]) + ' ' + original[len(city):] + ' '
+            if len(tail) >= 4:
+                return ' ' + CITY_ALIASES.get(city, cities[city]) + ' ' + original[len(city):] + ' '
+        return original
+    s = re.sub(r'(область|облысы|oblast)(?=(?:дом|дм|кв|үй|пәтер)\d)', r'\1 ', s, flags=re.I)
+    return re.sub(r'[^\W\d_]+(?:[-.][^\W\d_]+)*', separate, s)
+
+
+@lru_cache(maxsize=1)
+def district_catalog():
+    catalog = {key: list(ids) for key, ids in DIST.items()}
+    for key, ids in DIST.items():
+        if ' ' in key or key.endswith(('ский', 'ской', 'цкий')):
+            continue
+        stem = key[:-1] if key.endswith(('а', 'ы')) else key
+        for alias in (stem + 'ский', stem + 'инский'):
+            catalog.setdefault(alias, [])
+            catalog[alias].extend(item for item in ids if item not in catalog[alias])
+    return catalog
+
+
+def extract_inline_geo(s):
+    tokens = list(re.finditer(r",|[^\s,]+", s))
+    taken, out = set(), {}
+    for i, token in enumerate(tokens):
+        if token.group().lower() in {'казахстан', 'қазақстан', 'kazakhstan', 'kazakstan', 'kz', 'рк', 'қр'} and (i == 0 or tokens[i - 1].group() == ',') \
+                and (i + 1 >= len(tokens) or tokens[i + 1].group() == ','):
+            taken.add(i)
+
+    def claim(start, end, key, value):
+        taken.update(range(start, end))
+        out[key] = value
+
+    def phrase(start, end):
+        return ' '.join(token.group() for token in tokens[start:end])
+    for i, token in enumerate(tokens):
+        marker = canonical_marker(token.group())
+        if marker == "қ" and i > 0 and geo_norm(tokens[i - 1].group()) in CITY_KEYS:
+            taken.add(i)
+            continue
+        if i in taken or marker not in {"область", "обл", "облысы", "облыс", "oblast", "район", "р-н", "ауданы", "аудан"}:
+            continue
+        province = marker in {"область", "обл", "облысы", "облыс", "oblast"}
+        catalog = PROV if province else district_catalog()
+        match = None
+        previous = tokens[i - 1].group() if i else ","
+        suffix_district = marker in {"ауданы", "аудан", "район", "р-н"} and (
+            previous != ","
+            and geo_norm(previous) not in CITY_KEYS
+            and canonical_marker(previous) not in set(STREET_TYPES) | set(KW)
+        )
+        directions = (-1, 1) if province else ((-1,) if suffix_district else (1, -1))
+        for direction in directions:
+            for count in (3, 2, 1):
+                start, end = (i - count, i) if direction == -1 else (i + 1, i + 1 + count)
+                if start < 0 or end > len(tokens) or any(j in taken or tokens[j].group() == ',' for j in range(start, end)):
+                    continue
+                value = phrase(start, end)
+                key = geo_norm(strip_markers(value))
+                if province and value.lower() in PROVINCE_ALIASES and geo_norm(PROVINCE_ALIASES[value.lower()]) in catalog:
+                    key = geo_norm(PROVINCE_ALIASES[value.lower()])
+                if key in catalog:
+                    if province and not any(re.search(r'област|обл\.|облыс', ROWS[item][1], re.I) for item in catalog[key]):
+                        continue
+                    shown = prov_display(catalog[key][0]) if province else strip_markers(value)
+                    match = min(start, i), max(end, i + 1), shown
+                    break
+            if match:
+                break
+        if not match and not province:
+            if suffix_district:
+                for count in (2, 1):
+                    start = i - count
+                    if start < 0 or any(j in taken or tokens[j].group() == ',' for j in range(start, i)):
+                        continue
+                    if count > 1 and geo_norm(tokens[start].group()) in CITY_KEYS:
+                        start += 1
+                    value = phrase(start, i)
+                    if geo_norm(value) in {"белгісіз", "неизвестный", "неизвестно", "unknown"}:
+                        break
+                    if all(canonical_marker(tokens[j].group()) not in GEO_MARKERS | set(STREET_TYPES) | set(KW)
+                           and not NUM_RE.match(tokens[j].group()) for j in range(start, i)):
+                        match = start, i + 1, value
+                        break
+            else:
+                for j in (i + 1, i - 1):
+                    if 0 <= j < len(tokens) and j not in taken:
+                        value = tokens[j].group()
+                        if geo_norm(value) in {"белгісіз", "неизвестный", "неизвестно", "unknown"}:
+                            continue
+                        if value != ',' and canonical_marker(value) not in GEO_MARKERS | set(STREET_TYPES) | set(KW) and not NUM_RE.match(value):
+                            match = min(i, j), max(i, j) + 1, value
+                            break
+        if not match and province:
+            order = (i - 1, i + 1) if marker in {'облысы', 'облыс', 'oblast'} else (i + 1, i - 1)
+            for j in order:
+                if 0 <= j < len(tokens) and j not in taken:
+                    value = tokens[j].group()
+                    if value != ',' and canonical_marker(value) not in GEO_MARKERS | set(STREET_TYPES) | set(KW) and not NUM_RE.match(value):
+                        match = min(i, j), max(i, j) + 1, value + ' ' + token.group()
+                        break
+        if match:
+            claim(match[0], match[1], 'province' if province else 'district', match[2])
+    for i, token in enumerate(tokens):
+        marker = canonical_marker(token.group())
+        if marker == 'қ' and i > 0 and geo_norm(tokens[i - 1].group()) in CITY_KEYS:
+            taken.add(i)
+            continue
+        if i in taken or marker not in {'город', 'г', 'қала', 'қаласы', 'ауыл', 'ауылы', 'кент', 'село', 'пос', 'поселок', 'посёлок', 'с', 'п', 'ст'}:
+            continue
+        if marker in {'с', 'п', 'ст'} and not (i == 0 or tokens[i - 1].group() == ','):
+            continue
+        if marker == 'г' and i and canonical_marker(tokens[i - 1].group()) in STREET_TYPES:
+            continue
+        if marker in {'с', 'п', 'ст'} and (
+                out.get('city')                                                    # город уже найден («г. Караганда, СТ ...»)
+                or (i + 1 < len(tokens) and tokens[i + 1].group()[:1] in '"«“')   # «СТ "Наука"» — товарищество, не станция
+                or (marker == 'ст' and token.group().isupper())):
+            continue
+        direction = -1 if marker in {'қаласы', 'ауылы'} else 1
+        for count in (2, 1):
+            start, end = (i - count, i) if direction < 0 else (i + 1, i + 1 + count)
+            if start < 0 or end > len(tokens) or any(j in taken or tokens[j].group() == ',' for j in range(start, end)):
+                continue
+            value = phrase(start, end)
+            if '/' in value:
+                continue
+            if geo_norm(value) in CITY_KEYS or (count == 1 and canonical_marker(value) not in GEO_MARKERS | set(STREET_TYPES) | set(KW) and not NUM_RE.fullmatch(value)):
+                claim(min(i, start), max(i + 1, end), 'city', value)
+                if marker in {'ауыл', 'ауылы', 'кент', 'село', 'пос', 'поселок', 'посёлок', 'с', 'п', 'ст'}:
+                    out['_locality_kind'] = 'village'
+                break
+    for i in range(len(tokens)):
+        if i in taken:
+            continue
+        for count in (2, 1):
+            end = i + count
+            if end > len(tokens) or any(j in taken or tokens[j].group() == ',' for j in range(i, end)):
+                continue
+            value = phrase(i, end)
+            known_city = any(re.search(r'^г\.|город|қаласы', ROWS[item][1], re.I) for item in LOC.get(geo_norm(value), []))
+            initial_city = i == 0 and end < len(tokens) and tokens[end].group() == ',' and known_city
+            if geo_norm(value) not in CITY_KEYS and not initial_city:
+                continue
+            before = canonical_marker(tokens[i - 1].group()) if i else ''
+            after = canonical_marker(tokens[end].group()) if end < len(tokens) else ''
+            if (before in STREET_TYPES and after not in {'қаласы', 'қала'}) or before in LANDMARK_SET | LANDMARK_INFLECTIONS or before in {'область', 'обл', 'облыс', 'облысы', 'аудан', 'район'}:
+                continue
+            start = i - 1 if before in {'город', 'г', 'қала'} else i
+            last = end + 1 if after in {'қаласы', 'қала'} else end
+            claim(start, last, 'city', value)
+            break
+    if not out.get('district'):
+        districts = district_catalog()
+        city_tops = {top_of(item) for item in LOC.get(geo_norm(out.get('city', '')), [])}
+        for i, token in enumerate(tokens):
+            if i in taken:
+                continue
+            key = geo_norm(token.group())
+            ids = districts.get(key, [])
+            before = canonical_marker(tokens[i - 1].group()) if i else ''
+            after = canonical_marker(tokens[i + 1].group()) if i + 1 < len(tokens) else ''
+            if before in STREET_TYPES or after in STREET_TYPES or before in LANDMARK_SET | LANDMARK_INFLECTIONS:
+                continue
+            if city_tops:
+                ids = [item for item in ids if top_of(item) in city_tops]
+            elif not key.endswith(('ский', 'цкий')):
+                continue
+            if len(set(ids)) == 1:
+                claim(i, i + 1, 'district', strip_markers(ROWS[ids[0]][1]))
+                break
+    spans = [(tokens[i].start(), tokens[i].end()) for i in taken]
+    for start, end in sorted(spans, reverse=True):
+        s = s[:start] + ' ' + s[end:]
+    return out, s
+
+
+def has_geo_conflict(res):
+    cities = LOC.get(geo_norm(res.get('city') or ''), [])
+    kind = r'село|с\.|пос|ауыл|аул|станц|ст\.' if res.get('_locality_kind') == 'village' else r'г\.а\.|^г\.|город|қаласы'
+    cities = [i for i in cities if re.search(kind, ROWS[i][1], re.I)]
+    provinces = PROV.get(geo_norm(strip_markers(res.get('province') or '')), [])
+    return bool(cities and provinces and not ({top_of(i) for i in cities} & set(provinces)))
+
+
+def canonical_marker(token):
+    token = token.strip(".").lower()
+    return MARKER_ALIASES.get(token, token)
+
+
+def extract_living_area(s):
+    marker = re.search(r"(?<!\w)(?:ж\s*[./]?\s*[мк]\.?|жк|жилмассив|жилой\s+массив|жилой\s+комплекс|тұрғын\s+алап|тұрғын\s+үй\s+кешені)(?!\w)\s*", s, re.I)
+    if not marker:
+        return None, s
+    tokens = list(re.finditer(r",|[^\s,]+", s[marker.end():]))
+    name_tokens = []
+    end = marker.end()
+    for token in tokens:
+        value = token.group()
+        key = canonical_marker(value)
+        if value == "," or key in STREET_TYPES or key in KW or key in GEO_MARKERS or key in LANDMARK_SET:
+            break
+        name_tokens.append(value)
+        end = marker.end() + token.end()
+    if not name_tokens:
+        return None, s
+    return " ".join(name_tokens), s[:marker.start()] + " " + s[end:]
+
+
+def nt(t):
+    return canonical_marker(t)
+
+
+def split_segments(tokens):
+    segs, cur = [], []
+    for t in tokens:
+        if t == ",":
+            if cur:
+                segs.append(cur)
+                cur = []
+        else:
+            cur.append(t)
+    if cur:
+        segs.append(cur)
+    return segs
+
+
+def is_geo_segment(seg):
+    text = " ".join(seg)
+
+    if re.search(r"[^\W\d_]/[^\W\d_]", text):
+        return True
+    return nt(seg[0]) in GEO_MARKERS or nt(seg[-1]) in GEO_MARKERS
+
+
+_NOT_CITY = re.compile(r"село|посел|посёл|район|област|с\.о|а\.о|\bс\.|\bп\.|\bа\.|\bст\.|ауылы|ауданы|облысы", re.I)
+CITY_KEYS = {"алматы", "астана", "нур-султан", "шымкент", "караганда", "актобе", "актау",
+             "атырау", "костанай", "павлодар", "семей", "уральск", "тараз", "кызылорда",
+             "петропавловск", "усть-каменогорск", "талдыкорган", "кокшетау", "туркестан",
+             "темиртау", "экибастуз", "рудный", "жезказган", "балхаш", "конаев", "капчагай"}
+for _i, (_parent, _name) in ROWS.items():
+    if depth_of(_i) <= 1 and (not _NOT_CITY.search(_name) or re.search(r"город|г\.а\.|қаласы", _name, re.I)):
+        _k = geo_norm(strip_markers(pick_ru(_name)))
+        if _k:
+            CITY_KEYS.add(_k)
+
+
+def is_known_city(text):
+    from app.normalization import CITY_ALIASES
+    return geo_norm(text) in CITY_KEYS or text.lower() in CITY_ALIASES
+
+
+def is_city_text(text):
+    t = text.strip(". ")
+    if not t or NUM_RE.match(t.lower()):
+        return False
+    return geo_norm(t) in CITY_KEYS
+
+
+def split_leading_city(seg):
+    if len(seg) < 2 or nt(seg[0]) in STREET_TYPES or nt(seg[0]) in GEO_MARKERS:
+        return None, seg
+    for k in (2, 1):
+        if len(seg) <= k:
+            continue
+        cand = " ".join(seg[:k])
+        if NUM_RE.match(nt(cand)):
+            continue
+        if is_city_text(cand):
+            return cand, seg[k:]
+    return None, seg
+
+
+def parse_street(s, house=None):
+    out = {"street_type": None, "street_name": None, "house": house,
+           "landmark": None, "living_area": None, "_geo": []}
+    tokens = re.findall(r",|[^\s,]+", s)
+
+    for i, t in enumerate(tokens):
+        if nt(t) in LANDMARK_SET:
+            out["landmark"] = " ".join(x for x in tokens[i:] if x != ",")
+            tokens = tokens[:i]
+            break
+
+    rest = []
+    for seg in split_segments(tokens):
+        if is_geo_segment(seg):
+            out["_geo"].append(" ".join(seg))
+        else:
+            rest.append(seg)
+    if not rest:
+        return out
+
+    city_txt, rest[0] = split_leading_city(rest[0])
+    if city_txt:
+        out["_geo"].append(city_txt)
+    rest = [r for r in rest if r]
+    if not rest:
+        return out
+
+    found = None
+    for si, seg in enumerate(rest):
+        for ti, t in enumerate(seg):
+            if nt(t) in STREET_TYPES:
+                found = (si, ti)
+                break
+        if found:
+            break
+
+    if found:
+        si, ti = found
+        seg = rest[si]
+        stype = STREET_TYPES[nt(seg[ti])]
+        out["street_type"] = stype
+        out["_geo"] += [" ".join(x) for x in rest[:si]]
+        later = rest[si + 1:]
+        city_after = [x for x in later if is_city_text(" ".join(x))]
+        out["_geo"] += [" ".join(x) for x in city_after]
+        later = [x for x in later if x not in city_after]
+        if stype not in NUMBER_BEFORE_TYPE and not out["living_area"]:
+            for part in later:
+                for area_pos, area_token in enumerate(part):
+                    if nt(area_token) not in NUMBER_BEFORE_TYPE:
+                        continue
+                    area_name = part[:area_pos] + [area_token] + part[area_pos + 1:]
+                    out["living_area"] = " ".join(area_name)
+                    break
+                if out["living_area"]:
+                    break
+
+        if stype == "микрорайон" and ti >= 1 and not NUM_RE.match(nt(seg[ti - 1])):
+            name = seg[:ti]
+            tail = seg[ti + 1:]
+            if out["house"] is not None:
+                name += tail
+                tail = []
+        elif stype in NUMBER_BEFORE_TYPE and ti >= 1 and NUM_RE.match(nt(seg[ti - 1])):
+            if stype == "микрорайон":
+                name = seg[:ti]
+                out["living_area"] = None
+            else:
+                name = [seg[ti - 1]]
+                out["living_area"] = " ".join(seg[:ti - 1]) or None
+            tail = seg[ti + 1:]
+        else:
+            name = seg[ti + 1:]
+            tail = []
+            for offset, token in enumerate(name):
+                if nt(token) in STREET_TYPES and STREET_TYPES[nt(token)] not in NUMBER_BEFORE_TYPE:
+                    name = name[:offset]
+                    break
+            suffix_number = (stype not in NUMBER_BEFORE_TYPE and len(name) == 1
+                             and NUM_RE.match(nt(name[0])))
+            if ti > 0 and (not name or nt(name[0]) in KW or suffix_number):
+                if suffix_number and out["house"] is None:
+                    out["house"] = name[0].strip(".")
+                name = seg[:ti]
+            if (len(name) == 1 and NUM_RE.match(nt(name[0])) and ti > 0
+                    and stype not in NUMBER_BEFORE_TYPE and out["house"] is None):
+                out["house"] = name[0].strip(".")
+                name = seg[:ti]
+            elif not name and ti > 0:
+                name = seg[:ti]
+        if out['house'] is not None and stype not in NUMBER_BEFORE_TYPE and len(name) >= 2 and NUM_RE.fullmatch(nt(name[-1])):
+            name = name[:-1]
+
+        if out["house"] is None:
+            for part in [tail] + later:
+                if any(nt(token) in NUMBER_BEFORE_TYPE for token in part):
+                    continue
+                nums = [t for t in part if NUM_RE.match(nt(t))]
+                if nums:
+                    out["house"] = nums[0].strip(".")
+                    break
+            else:
+                if len(name) >= 2 and NUM_RE.match(nt(name[-1])):
+                    out["house"] = name[-1]
+                    name = name[:-1]
+        out["street_name"] = " ".join(name) or None
+    else:
+        if (len(rest) >= 2 and out["house"] is None
+                and len(rest[-1]) == 1 and NUM_RE.match(nt(rest[-1][0]))):
+            out["house"] = rest[-1][0]
+            rest = rest[:-1]
+        seg = rest[-1]
+        out["_geo"] += [" ".join(x) for x in rest[:-1]]
+        if out["house"] is None and len(seg) >= 2 and NUM_RE.match(nt(seg[-1])):
+            out["house"] = seg[-1]
+            seg = seg[:-1]
+        elif out["house"] is None and len(seg) == 1 and NUM_RE.match(nt(seg[0])):
+            out["house"] = seg[0]
+            seg = []
+        out["street_name"] = " ".join(seg) or None
+
+    return out
+
+
+def parse_address(raw: str) -> dict:
+    res = {
+        "province": None, "city": None, "district": None, "living_area": None,
+        "street_type": None, "street_name": None, "house": None,
+        "apartment": None, "entrance": None, "floor": None, "landmark": None,
+        "postal_code": None, "building": None, "structure": None,
+        "confidence": 0.0,
+    }
+    note_floor = note_entrance = None
+    kept_notes = []
+    for note in PARENTHETICAL_NOTE.findall(raw or ""):
+        note = " ".join(note.split())
+        if not note:
+            continue
+        m = re.fullmatch(r"(\d+)\s*-?\s*(?:й|ой|ый|я|ші)?\s*(?:этаж|қабат)", note, re.I)
+        if m and not note_floor:
+            note_floor = m.group(1)
+            continue
+        m = re.fullmatch(r"(\d+)\s*-?\s*(?:й|ой|ый|я|ші)?\s*(?:подъезд|подьезд|кіреберіс)", note, re.I)
+        if m and not note_entrance:
+            note_entrance = m.group(1)
+            continue
+        if re.fullmatch(r"[ВЗСЮБШ][КС]?[ОА]|ВКО|ЗКО|СКО|ЮКО|БКО|ШҚО|ҚО", note):   # аббревиатура области — не ориентир
+            continue
+        kept_notes.append(re.sub(r"^(?:ориентир|орентир)\s*[:\-–]?\s*", "", note, flags=re.I))
+    parenthetical_notes = "; ".join(kept_notes) or None
+    without_notes = PARENTHETICAL_NOTE.sub(" ", raw or "")
+    # слитные строки без пробелов: «гУральскпрТулбаева12кв44» -> «г. Уральск, пр. Тулбаева, д. 12, кв. 44»
+    exploded = glued.explode(without_notes, is_known_city)
+    if exploded:
+        without_notes = exploded
+    source_text = strip_post_boxes(strip_access_notes(clean(without_notes)))
+    no_house_number = bool(re.search(r"(?<!\w)(?:дом|дм|д|үй)?\s*б\s*/\s*н(?!\w)", source_text, re.I))
+    if no_house_number:
+        source_text = re.sub(r"(?<!\w)(?:дом|дм|д|үй)?\s*б\s*/\s*н(?!\w)", " ", source_text, flags=re.I)
+    highway_route, s = extract_highway_route(source_text)
+    from app.normalization import join_spaced_numbers
+    s = join_spaced_numbers(s)
+    s = join_digit_runs(s)
+    postal_code, s = extract_postal(s)
+    s = split_compact_geography(s)
+    s = split_compact_chains(s)
+    s = normalize_compact(s)
+    fused_street_suffix = None
+    suffix_match = re.search(
+        r"(?<!\w)(?:улица|ул|проспект|пр-т|пр|street|st)\s+(.+?)(\d+)\s*(?=(?:дом|дм|д|үй)\s*\d)",
+        s, re.I,
+    )
+    if suffix_match:
+        fused_street_suffix = f"{suffix_match.group(1).strip()} {suffix_match.group(2)}"
+    glued_fields, s = extract_glued_fields(s)
+    s = normalize_compact(s)
+    s = split_glued(s)
+    s = join_house_letter(s)
+    s = split_compact_geography(s)
+    living_area, s = extract_living_area(s)
+    fields, s = extract_keyword_fields(s)
+    fields.update(glued_fields)
+    for k, v in fields.items():
+        res[k] = v
+
+    explicit_geo, s = extract_inline_geo(s)
+    intersection, s = extract_intersection(s)
+    landmark, s = extract_landmark(s)
+
+    st = parse_street(s, res["house"])
+    if highway_route:
+        st['street_type'] = highway_route['street_type']
+        st['street_name'] = highway_route['street_name']
+    if fused_street_suffix and st.get("street_type") and st.get("street_name"):
+        st["street_name"] = fused_street_suffix
+    pair = re.fullmatch(r"(.+?)\s+(\d+)-(\d+)", st.get("street_name") or "")
+    if (pair and not res.get("house") and not st.get("house") and not res.get("apartment")):
+        st["street_name"] = pair.group(1).strip()
+        st["house"] = pair.group(2)
+        res["apartment"] = pair.group(3)
+    house_pair = re.fullmatch(r"(\d+)-(\d+)", str(st.get("house") or res.get("house") or ""))
+    if house_pair and not res.get("apartment"):
+        st["house"] = house_pair.group(1)
+        res["house"] = house_pair.group(1)
+        res["apartment"] = house_pair.group(2)
+    if (st["house"] is None and st["street_name"] and res.get("entrance")
+            and "/" in str(res["entrance"])):
+        st["house"] = res["entrance"]
+        res["entrance"] = None
+    for k in ("street_type", "street_name", "house", "landmark", "living_area"):
+        res[k] = st[k]
+    if no_house_number:
+        res["house"] = "б/н"
+    if res["street_name"]:
+        street_name = re.sub(r"\s+(?:д|дм|дом)\.?\s*$", "", res["street_name"], flags=re.I)
+        street_name = re.sub(r"^[\s.,;:№#]+|[\s.,;:№#]+$", "", street_name)
+        street_name = re.sub(r"\s+", " ", street_name).strip()
+        numeric_quarter = (res.get("street_type") in NUMBER_BEFORE_TYPE
+                           and bool(NUM_RE.fullmatch(street_name)))
+        if not re.search(r"[^\W\d_]", street_name, re.UNICODE) and not numeric_quarter:
+            street_name = None
+        res["street_name"] = street_name or None
+    if living_area:
+        res["living_area"] = living_area
+    if res.get("street_name"):
+        name = str(res["street_name"]).strip()
+        if res.get("street_type") not in NUMBER_BEFORE_TYPE and not highway_route:
+            house_tail = re.fullmatch(r"(.+\D)\s+(\d+[a-zа-я]?(?:/\d+[a-zа-я]?)?)", name, re.I)
+            if house_tail and not res.get("house"):
+                res["street_name"] = house_tail.group(1).strip()
+                res["house"] = house_tail.group(2)
+            elif house_tail and res.get("house") == house_tail.group(2):
+                res["street_name"] = house_tail.group(1).strip()
+        res["street_name"] = re.sub(r"\s+(?:код|дом|дм|д|үй)\s*$", "", str(res["street_name"]), flags=re.I).strip()
+        if re.fullmatch(r"(?:kb|kv|flat|дом|дм|подъезд|podest|пд|склад|участок|дачный участок|цех|здание|дача|бокс|павильон|ангар|офис|кабинет|база)", res["street_name"], re.I):
+            res["street_name"] = None
+    if landmark:
+        res["landmark"] = landmark
+    if intersection:
+        res["landmark"] = "; ".join(value for value in (intersection, res.get("landmark")) if value)
+    if parenthetical_notes:
+        res["landmark"] = "; ".join(value for value in (res.get("landmark"), parenthetical_notes) if value)
+    res["floor"] = res.get("floor") or note_floor
+    res["entrance"] = res.get("entrance") or note_entrance
+    city_segment = explicit_geo.get('city', '') + (' ауылы' if explicit_geo.get('_locality_kind') == 'village' else '')
+    geo_segments = ([explicit_geo['province']] if explicit_geo.get('province') else []) + st["_geo"] + ([city_segment] if city_segment else [])
+    g = resolve_geo(geo_segments)
+    res["province"], res["city"], res["district"] = g["province"], g["city"], g["district"]
+    res.update(explicit_geo)
+    for geo_field in ("city", "province"):
+        geo_value = res.get(geo_field)
+        if geo_value and len(re.sub(r"[^\w]", "", str(geo_value))) == 1:
+            res[geo_field] = None
+    res["city"] = russian_city(res["city"])
+    if not res.get("city"):
+        locality = re.match(r"^\s*(?:(?:с|пос|п|ст)\.?|село|поселок|посёлок|ауыл(?:ы)?)\s+([^,]+)", source_text, re.I)
+        if locality:
+            candidate = locality.group(1).strip(" .,")
+            if candidate and canonical_marker(candidate) not in GEO_MARKERS | set(STREET_TYPES) | set(KW):
+                res["city"] = candidate
+                res["_locality_kind"] = "village"
+
+    if res.get("district"):
+        from app.geo import DIST, ROWS, strip_markers, top_of
+        district_key = geo_norm(strip_markers(res["district"]))
+        district_ids = DIST.get(district_key, [])
+        city_ids = LOC.get(geo_norm(res.get("city") or ""), [])
+        city_tops = {top_of(item) for item in city_ids}
+        matching = [item for item in district_ids if not city_tops or top_of(item) in city_tops]
+        if len(matching) == 1:
+            res["district"] = strip_markers(ROWS[matching[0]][1])
+        else:
+            district = str(res["district"]).strip()
+            res["district"] = district[:1].upper() + district[1:]
+
+
+    if not res.get("district") and res["city"] and res.get("living_area") and res.get("_locality_kind") != 'village':
+        area_district = osm.lookup_place_district(geo_norm(res["city"]), res["living_area"])
+        if area_district:
+            res["district"] = area_district
+
+    street_match = 'not_checked'
+    if res["city"] and res["street_name"] and res.get('_locality_kind') != 'village':
+        info = osm.lookup(geo_norm(res["city"]), res["street_name"], res["street_type"])
+        street_match = 'matched' if info else 'not_confirmed'
+        if info:
+            if not res["district"] and info.get("district"):
+                res["district"] = info["district"]
+            if not res["street_type"] and info.get("street_type"):
+                res["street_type"] = info["street_type"]
+    elif not res["city"] and res["street_name"] and not res["street_type"]:
+        inferred_type = osm.lookup_street_type_global(res["street_name"])
+        if inferred_type:
+            res["street_type"] = inferred_type
+            street_match = 'global_type_inferred'
+
+    res['postal_code'] = postal_code
+    from app.review import build_review
+    res['review'] = build_review(raw, res, street_match=street_match)
+    issue_codes = {issue['code'] for issue in res['review']['issues']}
+    route_kilometer = bool(res.get('street_type') in {'тракт','шоссе'} and res.get('street_name')
+                           and re.search(r'(?:\d+\s*км|км\.?\s*\d+|\d+\s*-\s*й\s+километр)',res['street_name'],re.I))
+    if not res.get('house') and not route_kilometer:
+        confidence = 0.35
+    elif 'unassigned_numbers' in issue_codes or has_geo_conflict(res):
+        confidence = 0.55
+    elif not (res.get('street_name') or res.get('living_area')):
+        confidence = 0.65
+    elif street_match == 'not_confirmed':
+        confidence = 0.78
+    elif street_match == 'matched':
+        confidence = 0.95
+    else:
+        confidence = 0.90
+    city_key = geo_norm(res.get('city') or '')
+    if res.get('city') and res.get('_locality_kind') != 'village' and city_key not in CITY_KEYS and not LOC.get(city_key):
+        confidence = min(confidence, 0.6)           # город неизвестен справочнику
+    street = res.get('street_name') or ''
+    if res.get('street_name') and (len(re.sub(r'\W', '', street)) <= 1 or not re.search(r'[^\W\d_]', street)) \
+            and res.get('street_type') not in NUMBER_BEFORE_TYPE:
+        confidence = min(confidence, 0.5)           # название из одной буквы / без букв — почти наверняка обрезок
+    if re.fullmatch(r'[IVXLC]+', str(res.get('house') or ''), re.I):
+        confidence = min(confidence, 0.6)           # римская цифра вместо номера дома
+    if not res.get('province') and not res.get('city'):
+        confidence = min(confidence, 0.3)
+    res['confidence'] = confidence
+    return res
+
+=== app\review.py ===
+"""Объяснимая проверка: причины, исходные свидетельства и варианты без автоматической подмены."""
+import re
+from collections import Counter
+from rapidfuzz import process, fuzz
+from app.normalization import FIELD_WORDS, STREET_WORDS, POSTAL, normalize_compact, strip_access_notes, strip_post_boxes
+
+
+def build_review(raw, result, street_match='not_checked'):
+    from app.parser import canonical_marker, has_geo_conflict, clean
+    from app.geo import LOC, PROV, ROWS, norm, strip_markers, prov_display, depth_of, top_of
+    from app.normalization import join_spaced_numbers
+    filtered_raw = strip_post_boxes(strip_access_notes(clean(raw or '')))
+    numbered = join_spaced_numbers(filtered_raw)
+    text=normalize_compact(numbered)
+    address_text=re.split(r'(?<!\w)(?:ориентир|рядом|возле|напротив|около|рынок|базар|магазин|тц|трц|кафе|аптека)(?!\w)',text,maxsplit=1,flags=re.I)[0]
+    issues=[]
+    def add(code,field,ru,kk,hint_ru,hint_kk,severity='warning',candidates=None):
+        observed_keys=[field] if field else ['city','province']
+        if code=='unassigned_numbers':observed_keys=list(FIELD_WORDS)+['city','province','street_name','living_area','postal_code']
+        issues.append({'code':code,'field':field,'severity':severity,'message':{'ru':ru,'kk':kk},
+                       'suggestion':{'ru':hint_ru,'kk':hint_kk},'candidates':candidates or [],
+                       'observed':{key:result.get(key) for key in observed_keys}})
+    def geo_candidates(value,catalog,field):
+        matches=process.extract(norm(strip_markers(value)),catalog.keys(),scorer=fuzz.ratio,score_cutoff=86,limit=3)
+        choices=[]
+        for key,score,_ in matches:
+            item=min(catalog[key],key=depth_of)
+            shown=prov_display(item) if field=='province' else strip_markers(ROWS[item][1])
+            if not any(choice['label']==shown for choice in choices):choices.append({'label':shown,'changes':{field:shown}})
+        return choices
+    if numbered != filtered_raw:
+        add('joined_number_digits',None,'Раздельные цифры после маркера объединены в номер.','Белгіден кейінгі бөлек цифрлар бір нөмірге біріктірілді.',
+            'Например, «квартира 9 8» прочитана как «квартира 98». Проверьте номер по исходной строке.',
+            'Мысалы, «пәтер 9 8» — «пәтер 98» деп оқылды. Нөмірді бастапқы жолдан тексеріңіз.',severity='info')
+    market_destination = bool(result.get('landmark') and re.search(r'рынок|базар',result['landmark'],re.I))
+    route_kilometer = bool(result.get('street_type') in {'тракт','шоссе'} and result.get('street_name')
+                           and re.search(r'\b(?:\d+\s*км|\d+\s*-\s*й\s+километр)\b',result['street_name'],re.I))
+    if not result.get('house') and not route_kilometer:
+        add('missing_house','house','Не найден номер дома.','Үй нөмірі табылмады.','Сверьте номер с исходной строкой или уточните его у отправителя.','Нөмірді бастапқы жолдан тексеріңіз немесе жіберушіден нақтылаңыз.')
+    if not result.get('street_name') and not result.get('living_area') and not market_destination:
+        add('missing_street','street_name','Не найдена улица или жилмассив.','Көше не тұрғын алап табылмады.','Уточните тип и название улицы.','Көше түрі мен атауын нақтылаңыз.')
+    if not result.get('city'):
+        add('missing_city','city','Не найден город.','Қала табылмады.','Добавьте город: это поможет проверить область и район.','Қаланы қосыңыз: бұл облыс пен ауданды тексеруге көмектеседі.')
+    elif norm(result['city']) not in LOC:
+        add('unknown_city','city','Населённый пункт не найден в локальном справочнике.','Елді мекен жергілікті анықтамалықта табылмады.','Проверьте написание; варианты ниже — близкие названия, а не автоматическое исправление.','Жазылуын тексеріңіз; төмендегі нұсқалар — ұқсас атаулар, автоматты түзету емес.',candidates=geo_candidates(result['city'],LOC,'city'))
+    if result.get('province') and norm(strip_markers(result['province'])) not in PROV:
+        add('unknown_province','province','Область не найдена в локальном справочнике.','Облыс жергілікті анықтамалықта табылмады.','Проверьте название области. Близкие варианты требуют подтверждения.','Облыс атауын тексеріңіз. Ұқсас нұсқаларды растау қажет.',candidates=geo_candidates(result['province'],PROV,'province'))
+    elif result.get('province') and re.search(r'област|облыс',result['province'],re.I):
+        ids=PROV.get(norm(strip_markers(result['province'])),[])
+        if ids and not any(re.search(r'област|обл\.|облыс',ROWS[item][1],re.I) for item in ids):
+            add('invalid_province_kind','province','После маркера области указано название города.','Облыс белгісінен кейін қала атауы көрсетілген.',
+                'Уточните административную область; не превращаем город в область автоматически.','Әкімшілік облысты нақтылаңыз; қаланы автоматты түрде облысқа айналдырмаймыз.')
+    if has_geo_conflict(result):
+        add('geo_conflict',None,'Город и область противоречат справочнику.','Қала мен облыс анықтамалыққа сәйкес келмейді.','Уточните, какое значение верно. Исходные значения сохранены.','Қай мән дұрыс екенін нақтылаңыз. Бастапқы мәндер сақталды.')
+    if result.get('city') and not result.get('province'):
+        locations=LOC.get(norm(result['city']),[])
+        kind=r'село|с\.|пос|ауыл|аул|станц|ст\.' if result.get('_locality_kind')=='village' else r'г\.а\.|^г\.|город|қаласы'
+        preferred=[item for item in locations if re.search(kind,ROWS[item][1],re.I)]
+        tops={top_of(item) for item in (preferred or locations)}
+        if len(tops)>1:
+            choices=[{'label':prov_display(item),'changes':{'province':prov_display(item)}} for item in sorted(tops)[:5]]
+            add('ambiguous_geo','city','Есть одноимённые населённые пункты в разных областях.','Әртүрлі облыста аттас елді мекендер бар.',
+                'Уточните область или район; одного названия недостаточно.','Облыс не ауданды нақтылаңыз; жалғыз атау жеткіліксіз.',candidates=choices)
+    postal=result.get('postal_code')
+    if postal and not re.fullmatch(POSTAL,postal,re.I):
+        add('invalid_postal','postal_code','Необычный формат почтового индекса.','Пошта индексінің пішімі ерекше.','Проверьте шесть цифр либо семизначный буквенно-цифровой индекс.','Алты санды не жеті таңбалы әріптік-сандық индексті тексеріңіз.')
+    if postal:
+        add('postal_unverified','postal_code','Индекс извлечён, но его соответствие зданию не проверено.','Индекс алынды, бірақ ғимаратқа сәйкестігі тексерілмеді.','При необходимости проверьте индекс в справочнике Казпочты.','Қажет болса индексті Қазпошта анықтамалығынан тексеріңіз.',severity='info')
+    codes=[]
+    for match in re.finditer(rf'(?<!\w){POSTAL}(?!\w)',filtered_raw,re.I):
+        if re.search(r'(?:дом|дм|үй|квартира|пәтер|bld|appt)\s*[.№#]?\s*$',filtered_raw[:match.start()],re.I):continue
+        if match.group().upper() not in codes:codes.append(match.group().upper())
+    if len(codes)>1:
+        add('conflicting_postal','postal_code','Указано несколько разных индексов.','Бірнеше түрлі индекс көрсетілген.',
+            'Выберите индекс нужного здания; не объединяем их в один.','Қажетті ғимарат индексін таңдаңыз; индекстер біріктірілмейді.',candidates=[{'label':code,'changes':{'postal_code':code}} for code in codes])
+    if street_match=='not_confirmed':
+        add('street_not_confirmed','street_name','Улица не подтверждена локальными данными OSM.','Көше жергілікті OSM деректерімен расталмады.',
+            'Возможны другое написание, новое название или неполный справочник. Проверьте название по источнику.','Басқа жазылу, жаңа атау не толық емес анықтамалық болуы мүмкін. Атауды бастапқы дерекпен салыстырыңыз.',severity='info')
+    corrections=[]
+    for token in re.findall(r'[^\W\d_]+',text):
+        canonical=canonical_marker(token)
+        if canonical!=token.lower() and (token.lower(),canonical) not in corrections:
+            corrections.append((token.lower(),canonical))
+    if corrections:
+        shown=', '.join(before+' → '+after for before,after in corrections)
+        add('normalized_markers',None,'Распознаны опечатки в маркерах: '+shown,'Белгілердегі қателер танылды: '+shown,
+            'Проверьте разбор, если исправленный маркер мог быть частью названия. Названия не исправляем по сходству.','Түзетілген белгі атаудың бөлігі болса, нәтижені тексеріңіз. Атаулар ұқсастық бойынша түзетілмейді.',severity='info')
+    number=r'(?:\d+[а-яa-z]?(?:/\d+[а-яa-z]?)?|[ivxlcdm]+(?:-[а-яa-z]+)?)'
+    for field,words in FIELD_WORDS.items():
+        relevant_words = [word for word in words if not (field == 'building' and word == 'к')]
+        markers='|'.join(re.escape(word) for word in sorted(relevant_words,key=len,reverse=True))
+        values=[]
+        for match in re.finditer(rf'(?<!\w)(?:{markers})\.?\s*({number})(?!\w)',text,re.I):
+            if match[1] not in values:values.append(match[1])
+        if len(values)>1:
+            candidates=[{'label':value,'changes':{field:value}} for value in values]
+            add('conflicting_'+field,field,'Указано несколько разных номеров: '+', '.join(values),'Бірнеше түрлі нөмір көрсетілген: '+', '.join(values),
+                'Выберите нужный номер по исходному адресу.','Бастапқы мекенжай бойынша қажетті нөмірді таңдаңыз.',candidates=candidates)
+        unbound_marker = result.get(field) is None and re.search(rf'(?<!\w)(?:{markers})(?!\w)',address_text,re.I)
+        negated_building = field == 'building' and re.search(r'(?<!\w)(?:корпус|корп|блок)\s+(?:нет|жоқ|жок|отсутствует)(?!\w)',text,re.I)
+        descriptive_entrance = field == 'entrance' and re.search(
+            r'(?<!\w)(?:подъезд|подьезд|кіреберіс|кіреберісі)\s+(?:со\s+двора|с\s+двора|со\s+стороны|с\s+улицы|возле\b|рядом\b|сол\b|оң\b|паркинг\w*\b|жанында\b)',
+            text,re.I)
+        if unbound_marker and not negated_building and not descriptive_entrance:
+            add('unbound_'+field,field,'Маркер поля есть, но номер не определён.','Өріс белгісі бар, бірақ нөмір анықталмады.',
+                'Восстановите границу: например, «дом 12, квартира 3». Склеенные соседние числа нельзя однозначно разделить.','Шекараны қалпына келтіріңіз: мысалы, «үй 12, пәтер 3». Біріккен көрші сандарды бірмәнді бөлу мүмкін емес.')
+    seen=Counter(re.findall(r'\d+(?:/\d+)?',numbered))
+    for key,value in result.items():
+        if key not in {'confidence','review','raw_address','id'} and value:
+            seen.subtract(re.findall(r'\d+(?:/\d+)?',str(value)))
+    unused=[number for number,count in seen.items() if count>0]
+    if unused:
+        add('unassigned_numbers',None,'Не распределены числа: '+', '.join(unused),'Бөлінбеген сандар: '+', '.join(unused),
+            'Проверьте, относятся ли они к дому, квартире, корпусу или названию улицы. Не выбираем значение наугад.','Олардың үйге, пәтерге, корпусқа не көше атауына қатысын тексеріңіз. Мәнді кездейсоқ таңдамаймыз.')
+    marker_pattern='|'.join(re.escape(word) for words in STREET_WORDS.values() for word in sorted(words,key=len,reverse=True) if len(word)>2)
+    streets=list(re.finditer(rf'(?<!\w)({marker_pattern})(?!\w)',address_text,re.I))
+    types={word:kind for kind,words in STREET_WORDS.items() for word in words}
+    streets=[match for match in streets if types[match[1].lower()] not in {'микрорайон','квартал'}]
+    if len(streets)>1:
+        candidates=[]
+        for i,match in enumerate(streets):
+            end=streets[i+1].start() if i+1<len(streets) else len(text)
+            name=re.split(r'[,\d]',text[match.end():end],maxsplit=1)[0].strip()
+            if name:candidates.append({'label':match[1]+' '+name,'changes':{'street_type':types[match[1].lower()],'street_name':name}})
+        add('multiple_streets','street_name','В строке несколько типов или названий улиц.','Жолда бірнеше көше түрі не атауы бар.',
+            'Это может быть пересечение или два адреса. Выберите основной адрес.','Бұл қиылыс не екі мекенжай болуы мүмкін. Негізгі мекенжайды таңдаңыз.',candidates=candidates)
+    overlaps=list(re.finditer(r'(?<![^\W\d_])(?P<marker>улица|переулок|проспект|көшесі|даңғылы)(?P<name>[^\W\d_]{2,})',filtered_raw,re.I))
+    uncertain=[match for match in overlaps if not (match['name'][0].isupper() and not match['marker'].isupper())]
+    if uncertain:
+        candidates=[]
+        for match in uncertain:
+            names=[match['name']]
+            if match['marker'][-1].lower() in 'аеёиоуыэюяәіөұү':
+                names.append(match['marker'][-1]+match['name'])
+            candidates.extend({'label':name,'changes':{'street_name':name}} for name in names)
+        add('marker_name_overlap','street_name','Граница маркера улицы и названия неоднозначна.','Көше белгісі мен атауының шекарасы екіұшты.',
+            'Проверьте, не пропущена ли буква между маркером улицы и названием. Варианты ниже не подтверждены справочником.','Көше белгісі мен атауы арасында әріп түсіп қалмағанын тексеріңіз. Төмендегі нұсқалар анықтамалықпен расталмаған.',candidates=candidates)
+    critical_codes = {'missing_house', 'unassigned_numbers', 'geo_conflict', 'unbound_house'}
+    needs_review = any(issue['code'] in critical_codes for issue in issues)
+    return {'needs_review':needs_review,'issues':issues,'method':'rules-v2','confidence_kind':'heuristic','street_match':street_match,'locality_kind':result.get('_locality_kind','unspecified')}
+
+=== app\__init__.py ===
+
+
+=== scripts\build_osm.py ===
+import os
+import re
+import sqlite3
+import sys
+from collections import Counter
+
+CITIES = {
+    "Алматы":  (43.00, 76.70, 43.50, 77.25),
+    "Астана":  (50.90, 71.10, 51.40, 71.85),
+    "Шымкент": (42.20, 69.40, 42.50, 69.85),
+    "Актобе": (50.18, 57.05, 50.40, 57.40),
+    "Караганда": (49.70, 72.95, 49.92, 73.25),
+    "Атырау":  (47.03, 51.80, 47.20, 52.05),
+    "Актау":   (43.55, 51.05, 43.75, 51.30),
+    "Павлодар": (52.20, 76.80, 52.38, 77.15),
+    "Семей":   (50.33, 80.10, 50.50, 80.40),
+    "Усть-Каменогорск": (49.88, 82.45, 50.05, 82.80),
+    "Костанай": (53.12, 63.50, 53.30, 63.80),
+    "Петропавловск": (54.80, 69.00, 54.95, 69.30),
+    "Тараз":   (42.83, 71.25, 42.97, 71.50),
+    "Кызылорда": (44.78, 65.40, 44.92, 65.65),
+    "Уральск": (51.15, 51.25, 51.32, 51.50),
+    "Талдыкорган": (44.95, 78.28, 45.08, 78.50),
+    "Кокшетау": (53.22, 69.28, 53.35, 69.50),
+    "Туркестан": (43.25, 68.17, 43.36, 68.35),
+    "Конаев":  (43.82, 76.95, 43.92, 77.20),
+    "Темиртау": (50.00, 72.85, 50.12, 73.10),
+    "Экибастуз": (51.65, 75.20, 51.80, 75.45),
+    "Рудный":  (52.93, 63.02, 53.02, 63.25),
+    "Жезказган": (47.72, 67.65, 47.85, 67.90),
+    "Балхаш":  (46.80, 74.85, 46.92, 75.10),
+}
+BASE_CITIES = set(CITIES)   # города, для которых районы берём из OSM
+
+HIGHWAYS = {"residential", "primary", "secondary", "tertiary", "unclassified",
+            "living_street", "pedestrian", "trunk", "service", "road"}
+
+TYPE_WORDS = [
+    ("улица", r"улица|ул|көшесі|кошесі"),
+    ("проспект", r"проспект|пр-т|просп|пр|даңғылы"),
+    ("переулок", r"переулок|пер|тұйық көшесі"),
+    ("бульвар", r"бульвар|бул|бульвары"),
+    ("шоссе", r"шоссе|тас жолы"),
+    ("тупик", r"тупик|тұйығы"),
+    ("микрорайон", r"микрорайон|мкр|шағын ауданы"),
+    ("квартал", r"квартал|кв-л"),
+]
+
+DISTRICT_FIX = {"Әулиеата": "Аулиеата", "Жібек жолы": "Жибек Жолы"}
+DISTRICT_RE = re.compile(
+    r"(?:район|р-н|районы|аудан(?:ы|ы)?|district|район города|қалалық аудан)", re.I
+)
+
+NEAR = 0.0012
+DEFAULT_MARGIN = 0.10
+RELAXED_MARGIN = {"Караганда": 0.5, "Актобе": 0.5}
+
+
+def norm(t):
+    t = t.lower().replace("ё", "е")
+    t = re.sub(r"[^\w\s-]", " ", t)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def split_type(name):
+    n = norm(name)
+    for stype, words in TYPE_WORDS:
+        m = re.match(rf"^(?:{words})\s+(.+)$", n) or re.match(rf"^(.+?)\s+(?:{words})$", n)
+        if m:
+            return stype, m.group(1).strip()
+    return None, n
+
+
+def city_of(lat, lon):
+    for c, (s, w, n, e) in CITIES.items():
+        if s <= lat <= n and w <= lon <= e:
+            return c
+    return None
+
+
+# --- Автоматическое расширение списка городов (запуск с флагом --towns) ---
+# Для каждого узла place=city/town из дампа OSM, который не попал в CITIES выше,
+# добавляется прямоугольник вокруг центра. Одноимённые населённые пункты
+# пропускаются: их улицы нельзя надёжно разделить по названию города.
+TOWN_HALF_LAT = 0.07   # примерно 8 км на север и юг
+TOWN_HALF_LON = 0.10   # примерно 7 км на восток и запад
+
+
+def is_good_town_name(nm):
+    """Только кириллица, дефис, пробел, точка; без цифр и иероглифов; без слов вроде «село имени»."""
+    n = nm.strip().lower()
+    if not re.fullmatch(r"[а-яёәіңғүұқөһ\- .]+", n):
+        return False
+    return not re.match(r"^(?:село|поселок|посёлок|имени|аул)\b", n)
+
+
+def collect_towns(pbf):
+    import osmium
+    try:
+        nodes_only = osmium.osm.osm_entity_bits.NODE
+    except AttributeError:
+        nodes_only = osmium.osm.NODE
+    fp = osmium.FileProcessor(pbf, nodes_only).with_filter(osmium.filter.KeyFilter("place"))
+    found = {}
+    for o in fp:
+        if not o.is_node():
+            continue
+        tags = o.tags
+        if tags.get("place") not in ("city", "town"):
+            continue
+        nm = ru_name(tags)
+        if not nm or "/" in nm or not is_good_town_name(nm):
+            continue
+        found.setdefault(norm(nm), []).append((nm.strip(), o.location.lat, o.location.lon))
+    return found
+
+
+def add_towns(found):
+    added, duplicates, inside = [], [], []
+    for key in sorted(found):
+        items = found[key]
+        if len(items) > 1:
+            duplicates.append(items[0][0])
+            continue
+        nm, lat, lon = items[0]
+        if nm in CITIES:
+            continue
+        if city_of(lat, lon):
+            inside.append(nm)
+            continue
+        CITIES[nm] = (lat - TOWN_HALF_LAT, lon - TOWN_HALF_LON,
+                      lat + TOWN_HALF_LAT, lon + TOWN_HALF_LON)
+        added.append(nm)
+    return added, duplicates, inside
+
+
+def clean_district(name):
+    n = DISTRICT_RE.sub(" ", name)
+    n = re.sub(r"\s+", " ", n).strip(" .,-")
+    return DISTRICT_FIX.get(n, n)
+
+
+def ru_name(tags):
+    return tags.get("name:ru") or tags.get("name")
+
+
+def sample_points(nodes):
+    total = len(nodes)
+    if total == 0:
+        return []
+    idxs = sorted({0, total // 4, total // 2, (3 * total) // 4, total - 1})
+    pts = []
+    for i in idxs:
+        try:
+            nd = nodes[i]
+            pts.append((nd.lat, nd.lon))
+        except Exception:
+            continue
+    return pts
+
+
+def main(pbf, out, towns=False):
+    import osmium
+    import shapely.wkb as wkb
+    from shapely.geometry import Point
+    from shapely.prepared import prep
+
+    if towns:
+        added, duplicates, inside = add_towns(collect_towns(pbf))
+        print(f"Добавлено городов и посёлков: {len(added)}")
+        print(f"Пропущено из-за одинаковых названий: {len(duplicates)}: {duplicates[:20]}")
+        print(f"Пропущено, так как уже внутри другого города: {len(inside)}")
+
+    streets = []
+    places = []
+    districts = []
+    rejected = []
+    wkbf = osmium.geom.WKBFactory()
+
+    fp = (osmium.FileProcessor(pbf)
+          .with_locations()
+          .with_areas(osmium.filter.KeyFilter("boundary")))
+    cnt = 0
+    for o in fp:
+        cnt += 1
+        if cnt % 2_000_000 == 0:
+            print(f"  ...обработано {cnt:,} объектов", flush=True)
+        tags = o.tags
+        if o.is_way() and "highway" in tags and tags["highway"] in HIGHWAYS:
+            nm = ru_name(tags)
+            if not nm:
+                continue
+            pts = sample_points(o.nodes)
+            if not pts:
+                continue
+            city = city_of(*pts[len(pts) // 2])
+            if not city:
+                continue
+            stype, nn = split_type(nm)
+            if nn:
+                streets.append((city, stype, nn, pts))
+        elif o.is_node() and tags.get("place") in ("suburb", "neighbourhood", "quarter"):
+            nm = ru_name(tags)
+            if nm:
+                city = city_of(o.location.lat, o.location.lon)
+                if city:
+                    places.append((city, o.location.lat, o.location.lon, nm))
+        elif o.is_area() and tags.get("boundary") == "administrative":
+            nm = ru_name(tags) or ""
+            if not DISTRICT_RE.search(nm):
+                continue
+            try:
+                poly = wkb.loads(wkbf.create_multipolygon(o), hex=True)
+                rp = poly.representative_point()
+            except Exception:
+                continue
+            city = city_of(rp.y, rp.x)
+            if not city or city not in BASE_CITIES:
+                continue
+            s_, w_, n_, e_ = CITIES[city]
+            minx, miny, maxx, maxy = poly.bounds
+            m = RELAXED_MARGIN.get(city, DEFAULT_MARGIN)
+            if miny < s_ - m or minx < w_ - m or maxy > n_ + m or maxx > e_ + m:
+                rejected.append((city, nm, tags.get("admin_level", "?"),
+                                 round(miny, 3), round(minx, 3), round(maxy, 3), round(maxx, 3)))
+                continue
+            districts.append((city, clean_district(nm), prep(poly), poly))
+
+    print(f"Улиц (участков): {len(streets):,}; мест: {len(places):,}; районов: {len(districts)}")
+    by_city = Counter(c for c, *_ in districts)
+    print("Районов по городам:", dict(by_city))
+    print("Улиц по городам:", dict(Counter(c for c, *_ in streets)))
+    print("Города без районов:", [c for c in CITIES if c not in by_city])
+    if rejected:
+        print("\nОТКЛОНЁННЫЕ районы (город | название | admin_level | юг запад север восток):")
+        for r in rejected[:60]:
+            print("  ", r)
+        print("Если среди них есть настоящие районы города, пришли этот список целиком.")
+    if not districts:
+        print("ВНИМАНИЕ: районы не найдены. Пришлите мне этот вывод целиком.")
+
+    def district_at(city, lat, lon):
+        p = Point(lon, lat)
+        own = [(name, pp, poly) for c, name, pp, poly in districts if c == city]
+        for name, pp, poly in own:
+            if pp.contains(p):
+                return name
+        best, best_d = None, NEAR
+        for name, pp, poly in own:
+            d = poly.distance(p)
+            if d < best_d:
+                best, best_d = name, d
+        return best
+
+    agg = Counter()
+    for city, stype, nn, pts in streets:
+        for lat, lon in pts:
+            agg[(city, nn, stype, district_at(city, lat, lon))] += 1
+
+    if os.path.exists(out):
+        os.remove(out)
+    db = sqlite3.connect(out)
+    db.execute("CREATE TABLE street(city TEXT, name TEXT, type TEXT, district TEXT, n INT)")
+    db.executemany("INSERT INTO street VALUES (?,?,?,?,?)",
+                   [(c, nn, st, d, k) for (c, nn, st, d), k in agg.items()])
+    db.execute("CREATE INDEX ix_street ON street(city, name)")
+    db.execute("CREATE TABLE place(city TEXT, name TEXT, district TEXT)")
+    db.executemany("INSERT INTO place VALUES (?,?,?)",
+                   [(c, norm(nm), district_at(c, la, lo)) for c, la, lo, nm in places])
+    db.commit()
+
+    print("\nДоля точек улиц с районом по городам с районами:")
+    for city in by_city:
+        total, with_d = db.execute(
+            "SELECT SUM(n), SUM(CASE WHEN district IS NOT NULL THEN n ELSE 0 END) FROM street WHERE city=?",
+            (city,)).fetchone()
+        print(f"  {city}: {with_d}/{total} = {round(100 * with_d / total)}%")
+    db.close()
+    print("Готово:", out)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        sys.exit("Использование: python scripts/build_osm.py путь/к/kazakhstan-latest.osm.pbf [--towns]")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "reference", "osm_streets.sqlite")
+    main(sys.argv[1], out, towns="--towns" in sys.argv[2:])
