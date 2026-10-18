@@ -1,7 +1,7 @@
 import re
 import unicodedata
 from functools import lru_cache
-from app import osm
+from app import osm, glued
 from app.normalization import FIELD_WORDS, STREET_WORDS, PROVINCE_ALIASES, TYPO_ALIASES, PARENTHETICAL_NOTE, extract_postal, normalize_compact, split_compact_chains, strip_access_notes, strip_post_boxes
 from app.geo import resolve_geo, ROWS, depth_of, LOC, PROV, DIST, top_of, prov_display, norm as geo_norm, strip_markers, pick_ru
 
@@ -13,6 +13,13 @@ def clean(s: str) -> str:
     s = re.sub(r"[\r\n]+", ", ", s)
     s = re.sub(r"[\u200b-\u200f\u2060\ufeff\u00ad]", "", s)
     s = s.replace("\xa0", " ")
+    s = re.sub(r"(?<!\w)(?:мкр|мкрн|мик|мк)\.?\s*-\s*(?:н|он)(?!\w)\.?", "мкр", s, flags=re.I)   # «мкр.-н Алмагуль»
+    s = re.sub(r"\.{2,}|…", ", ", s)                                # «г. Актобе... мкр. 11»
+    s = re.sub(r"(?<!\w)(даңғылы|көшесі)ның\s+жалғасы(?!\w)", r"\1", s, flags=re.I)  # «Абай даңғылының жалғасы» -> «Абай даңғылы»
+    s = re.sub(r"[!]+", " ", s)                                  # «кв. 14!!!»
+    s = re.sub(r"(?<![A-Za-z])No\.?\s*(?=\d)", " ", s)           # NFKC превращает «№» в «No»: «кв. № 18»
+    s = re.sub(r"(?<=[^\W\d_]\.)\s*-\s*(?=\d)", " ", s)        # «д.-14», «кв.-88»
+    s = re.sub(r"(?<=\d)\s*[«\"“„]\s*([^\W\d_])\s*[»\"”“]", r"\1", s)  # «д. 5 «б»» -> «5б»
     s = re.sub(r"(?<!\w)н\s*\.\s*п\s*\.?(?!\w)", "нп", s, flags=re.I)
     s = re.sub(r"(?<!\w)к-сі(?!\w)", "көшесі", s, flags=re.I)
     s = re.sub(r"[;|]+", ",", s)
@@ -143,9 +150,8 @@ def russian_city(city):
     if not city:
         return city
     from app.normalization import CITY_ALIASES
-    target = CITY_ALIASES.get(geo_norm(city))
-    if not target and city.isascii():
-        target = CITY_ALIASES.get(city.strip().lower())
+    city = re.sub(r"\s+(?:қаласы|қала|қ|ш|ауылы|ауыл)\.?$", "", city.strip(), flags=re.I)   # «Қосшы қ» -> «Қосшы»
+    target = CITY_ALIASES.get(geo_norm(city)) or CITY_ALIASES.get(city.strip().lower())
     if target:
         return target.title()
     if geo_norm(city) in CITY_KEYS:
@@ -289,8 +295,8 @@ def extract_intersection(s):
 def extract_highway_route(s):
     """Protect a hyphenated route name and its kilometre point from generic parsing."""
     route = r"[^\s,]+(?:-[^\s,]+)+"
-    kilometer = r"(?:\d+\s*(?:км|километр(?:а|ов)?)|\d+\s*-\s*й\s+километр)"
-    road_type = r"трассасы|трасса|тракт|шоссе"
+    kilometer = r"(?:\d+\s*(?:км|километр(?:а|ов)?)|км\.?\s*\d+|\d+\s*-\s*й\s+километр)"
+    road_type = r"трассасы|трасса|тракт|шоссе|автодорога|автотрасса"
     patterns = (
         re.compile(rf"(?<!\w)(?P<km_before>{kilometer})\s+(?P<type>{road_type})\s+(?P<route>{route})(?:\s*,?\s*(?P<km_after>{kilometer}))?", re.I),
         re.compile(rf"(?<!\w)(?P<type>{road_type})\s+(?P<route>{route})(?:\s*,?\s*(?P<km_after>{kilometer}))?", re.I),
@@ -399,7 +405,8 @@ def extract_inline_geo(s):
     tokens = list(re.finditer(r",|[^\s,]+", s))
     taken, out = set(), {}
     for i, token in enumerate(tokens):
-        if token.group().lower() in {'казахстан', 'қазақстан', 'kazakhstan', 'kazakstan', 'kz', 'рк', 'қр'} and (i == 0 or tokens[i - 1].group() == ','):
+        if token.group().lower() in {'казахстан', 'қазақстан', 'kazakhstan', 'kazakstan', 'kz', 'рк', 'қр'} and (i == 0 or tokens[i - 1].group() == ',') \
+                and (i + 1 >= len(tokens) or tokens[i + 1].group() == ','):
             taken.add(i)
 
     def claim(start, end, key, value):
@@ -484,6 +491,13 @@ def extract_inline_geo(s):
         if i in taken or marker not in {'город', 'г', 'қала', 'қаласы', 'ауыл', 'ауылы', 'кент', 'село', 'пос', 'поселок', 'посёлок', 'с', 'п', 'ст'}:
             continue
         if marker in {'с', 'п', 'ст'} and not (i == 0 or tokens[i - 1].group() == ','):
+            continue
+        if marker == 'г' and i and canonical_marker(tokens[i - 1].group()) in STREET_TYPES:
+            continue
+        if marker in {'с', 'п', 'ст'} and (
+                out.get('city')                                                    # город уже найден («г. Караганда, СТ ...»)
+                or (i + 1 < len(tokens) and tokens[i + 1].group()[:1] in '"«“')   # «СТ "Наука"» — товарищество, не станция
+                or (marker == 'ст' and token.group().isupper())):
             continue
         direction = -1 if marker in {'қаласы', 'ауылы'} else 1
         for count in (2, 1):
@@ -611,6 +625,11 @@ for _i, (_parent, _name) in ROWS.items():
         _k = geo_norm(strip_markers(pick_ru(_name)))
         if _k:
             CITY_KEYS.add(_k)
+
+
+def is_known_city(text):
+    from app.normalization import CITY_ALIASES
+    return geo_norm(text) in CITY_KEYS or text.lower() in CITY_ALIASES
 
 
 def is_city_text(text):
@@ -766,10 +785,29 @@ def parse_address(raw: str) -> dict:
         "postal_code": None, "building": None, "structure": None,
         "confidence": 0.0,
     }
-    parenthetical_notes = "; ".join(
-        " ".join(note.split()) for note in PARENTHETICAL_NOTE.findall(raw or "") if note.strip()
-    ) or None
+    note_floor = note_entrance = None
+    kept_notes = []
+    for note in PARENTHETICAL_NOTE.findall(raw or ""):
+        note = " ".join(note.split())
+        if not note:
+            continue
+        m = re.fullmatch(r"(\d+)\s*-?\s*(?:й|ой|ый|я|ші)?\s*(?:этаж|қабат)", note, re.I)
+        if m and not note_floor:
+            note_floor = m.group(1)
+            continue
+        m = re.fullmatch(r"(\d+)\s*-?\s*(?:й|ой|ый|я|ші)?\s*(?:подъезд|подьезд|кіреберіс)", note, re.I)
+        if m and not note_entrance:
+            note_entrance = m.group(1)
+            continue
+        if re.fullmatch(r"[ВЗСЮБШ][КС]?[ОА]|ВКО|ЗКО|СКО|ЮКО|БКО|ШҚО|ҚО", note):   # аббревиатура области — не ориентир
+            continue
+        kept_notes.append(re.sub(r"^(?:ориентир|орентир)\s*[:\-–]?\s*", "", note, flags=re.I))
+    parenthetical_notes = "; ".join(kept_notes) or None
     without_notes = PARENTHETICAL_NOTE.sub(" ", raw or "")
+    # слитные строки без пробелов: «гУральскпрТулбаева12кв44» -> «г. Уральск, пр. Тулбаева, д. 12, кв. 44»
+    exploded = glued.explode(without_notes, is_known_city)
+    if exploded:
+        without_notes = exploded
     source_text = strip_post_boxes(strip_access_notes(clean(without_notes)))
     no_house_number = bool(re.search(r"(?<!\w)(?:дом|дм|д|үй)?\s*б\s*/\s*н(?!\w)", source_text, re.I))
     if no_house_number:
@@ -841,7 +879,7 @@ def parse_address(raw: str) -> dict:
         res["living_area"] = living_area
     if res.get("street_name"):
         name = str(res["street_name"]).strip()
-        if res.get("street_type") not in NUMBER_BEFORE_TYPE:
+        if res.get("street_type") not in NUMBER_BEFORE_TYPE and not highway_route:
             house_tail = re.fullmatch(r"(.+\D)\s+(\d+[a-zа-я]?(?:/\d+[a-zа-я]?)?)", name, re.I)
             if house_tail and not res.get("house"):
                 res["street_name"] = house_tail.group(1).strip()
@@ -849,7 +887,7 @@ def parse_address(raw: str) -> dict:
             elif house_tail and res.get("house") == house_tail.group(2):
                 res["street_name"] = house_tail.group(1).strip()
         res["street_name"] = re.sub(r"\s+(?:код|дом|дм|д|үй)\s*$", "", str(res["street_name"]), flags=re.I).strip()
-        if re.fullmatch(r"(?:kb|kv|flat|дом|дм|подъезд|podest|пд)", res["street_name"], re.I):
+        if re.fullmatch(r"(?:kb|kv|flat|дом|дм|подъезд|podest|пд|склад|участок|дачный участок|цех|здание|дача|бокс|павильон|ангар|офис|кабинет|база)", res["street_name"], re.I):
             res["street_name"] = None
     if landmark:
         res["landmark"] = landmark
@@ -857,6 +895,8 @@ def parse_address(raw: str) -> dict:
         res["landmark"] = "; ".join(value for value in (intersection, res.get("landmark")) if value)
     if parenthetical_notes:
         res["landmark"] = "; ".join(value for value in (res.get("landmark"), parenthetical_notes) if value)
+    res["floor"] = res.get("floor") or note_floor
+    res["entrance"] = res.get("entrance") or note_entrance
     city_segment = explicit_geo.get('city', '') + (' ауылы' if explicit_geo.get('_locality_kind') == 'village' else '')
     geo_segments = ([explicit_geo['province']] if explicit_geo.get('province') else []) + st["_geo"] + ([city_segment] if city_segment else [])
     g = resolve_geo(geo_segments)
@@ -914,7 +954,7 @@ def parse_address(raw: str) -> dict:
     res['review'] = build_review(raw, res, street_match=street_match)
     issue_codes = {issue['code'] for issue in res['review']['issues']}
     route_kilometer = bool(res.get('street_type') in {'тракт','шоссе'} and res.get('street_name')
-                           and re.search(r'\b(?:\d+\s*км|\d+\s*-\s*й\s+километр)\b',res['street_name'],re.I))
+                           and re.search(r'(?:\d+\s*км|км\.?\s*\d+|\d+\s*-\s*й\s+километр)',res['street_name'],re.I))
     if not res.get('house') and not route_kilometer:
         confidence = 0.35
     elif 'unassigned_numbers' in issue_codes or has_geo_conflict(res):
@@ -927,5 +967,16 @@ def parse_address(raw: str) -> dict:
         confidence = 0.95
     else:
         confidence = 0.90
+    city_key = geo_norm(res.get('city') or '')
+    if res.get('city') and res.get('_locality_kind') != 'village' and city_key not in CITY_KEYS and not LOC.get(city_key):
+        confidence = min(confidence, 0.6)           # город неизвестен справочнику
+    street = res.get('street_name') or ''
+    if res.get('street_name') and (len(re.sub(r'\W', '', street)) <= 1 or not re.search(r'[^\W\d_]', street)) \
+            and res.get('street_type') not in NUMBER_BEFORE_TYPE:
+        confidence = min(confidence, 0.5)           # название из одной буквы / без букв — почти наверняка обрезок
+    if re.fullmatch(r'[IVXLC]+', str(res.get('house') or ''), re.I):
+        confidence = min(confidence, 0.6)           # римская цифра вместо номера дома
+    if not res.get('province') and not res.get('city'):
+        confidence = min(confidence, 0.3)
     res['confidence'] = confidence
     return res
